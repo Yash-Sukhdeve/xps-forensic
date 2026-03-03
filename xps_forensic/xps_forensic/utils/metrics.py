@@ -72,7 +72,7 @@ def compute_segment_eer(
     frame_scores: np.ndarray,
     frame_labels: np.ndarray,
     resolution_ms: float,
-    frame_shift_ms: float = 10.0,
+    frame_shift_ms: float = 20.0,
 ) -> tuple[float, float]:
     """Compute segment-level EER at a given temporal resolution.
 

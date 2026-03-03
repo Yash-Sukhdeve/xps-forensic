@@ -113,7 +113,7 @@ def _interpolate_string(s: str, root: dict) -> str:
             if isinstance(obj, dict):
                 obj = obj[part]
             else:
-                raise KeyError(f"Cannot resolve reference '${{{{path}}}}'")
+                raise KeyError(f"Cannot resolve reference '${{{path}}}'")  # noqa: E501
         return str(obj)
 
     return pattern.sub(_replacer, s)

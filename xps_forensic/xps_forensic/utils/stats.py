@@ -128,9 +128,9 @@ def friedman_nemenyi(
 
     mean_ranks = ranks.mean(axis=0)
 
-    # Friedman test
+    # Friedman test (pass raw data — scipy ranks internally)
     stat, p = sp_stats.friedmanchisquare(
-        *[ranks[:, j] for j in range(k)]
+        *[results_matrix[:, j] for j in range(k)]
     )
 
     # Nemenyi critical difference (alpha = 0.05)
