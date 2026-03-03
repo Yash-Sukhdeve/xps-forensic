@@ -54,11 +54,14 @@ class PartialEditDataset(BasePartialSpoofDataset):
         for entry in raw_entries:
             wav_path = self.root / "audio" / entry["filename"]
             edit_regions = entry.get("edit_regions", [])
+            # Eager utterance label: 0=real, 1=partial (has edits)
+            utterance_label_raw = 1 if edit_regions else 0
             manifest.append(
                 {
                     "utterance_id": entry["id"],
                     "wav_path": str(wav_path),
                     "edit_regions": edit_regions,
+                    "utterance_label_raw": utterance_label_raw,
                 }
             )
         return manifest
@@ -80,8 +83,8 @@ class PartialEditDataset(BasePartialSpoofDataset):
             entry["edit_regions"], waveform, sr
         )
 
-        # Determine utterance label
-        fake_ratio = frame_labels.sum() / max(len(frame_labels), 1)
+        # Determine ternary utterance label from binarized frames
+        fake_ratio = float(np.mean(frame_labels)) if len(frame_labels) > 0 else 0.0
         if fake_ratio == 0.0:
             utterance_label = 0
         elif fake_ratio > 0.95:

@@ -92,7 +92,7 @@ class HQMPSDDataset(BasePartialSpoofDataset):
         frame_labels = self._load_and_binarize_labels(label_path, waveform, sr)
 
         # Determine ternary utterance label from binarized frames
-        fake_ratio = frame_labels.sum() / max(len(frame_labels), 1)
+        fake_ratio = float(np.mean(frame_labels)) if len(frame_labels) > 0 else 0.0
         if fake_ratio == 0.0:
             utterance_label = 0
         elif fake_ratio > 0.95:
