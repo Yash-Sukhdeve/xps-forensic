@@ -106,7 +106,12 @@ class CFPRFDetector(BaseDetector):
                 )
         return frame_scores
 
-    def predict(self, waveform: np.ndarray, sample_rate: int = 16000) -> DetectorOutput:
+    def predict(
+        self,
+        waveform: np.ndarray,
+        sample_rate: int = 16000,
+        utterance_id: str = "",
+    ) -> DetectorOutput:
         """Run CFPRF inference on a single waveform.
 
         Handles two output formats from the CFPRF model:
@@ -117,6 +122,7 @@ class CFPRFDetector(BaseDetector):
         Args:
             waveform: 1-D float array of raw audio samples at sample_rate.
             sample_rate: Sample rate in Hz (default 16000).
+            utterance_id: Identifier for the utterance.
 
         Returns:
             DetectorOutput with frame-level spoof probabilities.
@@ -144,7 +150,7 @@ class CFPRFDetector(BaseDetector):
         utterance_score = float(np.max(frame_scores)) if len(frame_scores) > 0 else 0.0
 
         return DetectorOutput(
-            utterance_id="",
+            utterance_id=utterance_id,
             frame_scores=frame_scores,
             utterance_score=utterance_score,
             frame_shift_ms=self.frame_shift_ms,

@@ -73,7 +73,12 @@ class MRMDetector(BaseDetector):
         self.model.to(self.device)
         self.model.eval()
 
-    def predict(self, waveform: np.ndarray, sample_rate: int = 16000) -> DetectorOutput:
+    def predict(
+        self,
+        waveform: np.ndarray,
+        sample_rate: int = 16000,
+        utterance_id: str = "",
+    ) -> DetectorOutput:
         """Run MRM inference on a single waveform.
 
         Handles multiple output formats from the MRM model:
@@ -86,6 +91,7 @@ class MRMDetector(BaseDetector):
         Args:
             waveform: 1-D float array of raw audio samples at sample_rate.
             sample_rate: Sample rate in Hz (default 16000).
+            utterance_id: Identifier for the utterance.
 
         Returns:
             DetectorOutput with frame-level spoof probabilities.
@@ -111,9 +117,9 @@ class MRMDetector(BaseDetector):
             frame_scores = torch.sigmoid(logits).cpu().numpy().flatten()
 
         return DetectorOutput(
-            utterance_id="",
+            utterance_id=utterance_id,
             frame_scores=frame_scores,
-            utterance_score=float(np.max(frame_scores)),
+            utterance_score=float(np.max(frame_scores)) if len(frame_scores) > 0 else 0.0,
             frame_shift_ms=self.frame_shift_ms,
             detector_name=self.name,
         )

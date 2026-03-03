@@ -100,12 +100,18 @@ class BaseDetector(ABC):
         """Load model weights from checkpoint."""
 
     @abstractmethod
-    def predict(self, waveform: np.ndarray, sample_rate: int = 16000) -> DetectorOutput:
+    def predict(
+        self,
+        waveform: np.ndarray,
+        sample_rate: int = 16000,
+        utterance_id: str = "",
+    ) -> DetectorOutput:
         """Run inference on a single waveform.
 
         Args:
             waveform: 1-D float array of raw audio samples.
             sample_rate: Sample rate in Hz (default 16000).
+            utterance_id: Identifier for the utterance.
 
         Returns:
             DetectorOutput with frame-level scores.
@@ -130,16 +136,7 @@ class BaseDetector(ABC):
         Returns:
             List of DetectorOutput, one per waveform.
         """
-        results = []
-        for wav, uid in zip(waveforms, utterance_ids):
-            out = self.predict(wav, sample_rate)
-            results.append(
-                DetectorOutput(
-                    utterance_id=uid,
-                    frame_scores=out.frame_scores,
-                    utterance_score=out.utterance_score,
-                    frame_shift_ms=self.frame_shift_ms,
-                    detector_name=self.name,
-                )
-            )
-        return results
+        return [
+            self.predict(wav, sample_rate, utterance_id=uid)
+            for wav, uid in zip(waveforms, utterance_ids)
+        ]

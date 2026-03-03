@@ -2,6 +2,10 @@
 import numpy as np
 import pytest
 from xps_forensic.detectors.base import DetectorOutput, BaseDetector
+from xps_forensic.detectors.bam import BAMDetector
+from xps_forensic.detectors.sal import SALDetector
+from xps_forensic.detectors.cfprf import CFPRFDetector
+from xps_forensic.detectors.mrm import MRMDetector
 
 
 class TestDetectorOutput:
@@ -88,11 +92,6 @@ class TestBaseDetectorInterface:
             BaseDetector()
 
 
-# ---- Detector wrapper instantiation tests ----
-
-from xps_forensic.detectors.bam import BAMDetector
-
-
 class TestBAMDetector:
     def test_instantiation(self):
         det = BAMDetector(device="cpu")
@@ -115,9 +114,6 @@ class TestBAMDetector:
             det.predict(np.zeros(16000))
 
 
-from xps_forensic.detectors.sal import SALDetector
-
-
 class TestSALDetector:
     def test_instantiation(self):
         det = SALDetector(device="cpu")
@@ -134,9 +130,6 @@ class TestSALDetector:
             det.predict(np.zeros(16000))
 
 
-from xps_forensic.detectors.cfprf import CFPRFDetector
-
-
 class TestCFPRFDetector:
     def test_instantiation(self):
         det = CFPRFDetector(device="cpu")
@@ -151,9 +144,6 @@ class TestCFPRFDetector:
         det = CFPRFDetector(device="cpu")
         with pytest.raises(RuntimeError, match="load_model"):
             det.predict(np.zeros(16000))
-
-
-from xps_forensic.detectors.mrm import MRMDetector
 
 
 class TestMRMDetector:
