@@ -1,0 +1,73 @@
+project:
+  name: "xps-forensic"
+  seed: 42
+
+device: "auto"
+
+data:
+  root: "./data"
+  partialspoof:
+    path: "${data.root}/PartialSpoof"
+    sample_rate: 16000
+    eval_split_ratio: 0.8
+  partialedit:
+    path: "${data.root}/PartialEdit"
+    sample_rate: 16000
+  hqmpsd:
+    path: "${data.root}/HQ-MPSD-EN"
+    sample_rate: 16000
+    language: "en"
+  llamapartialspoof:
+    path: "${data.root}/LlamaPartialSpoof"
+    sample_rate: 16000
+
+detectors:
+  bam:
+    name: "BAM"
+    repo: "https://github.com/media-sec-lab/BAM"
+    checkpoint: null
+    backbone: "wavlm-large"
+  sal:
+    name: "SAL"
+    repo: "https://github.com/SentryMao/SAL"
+    checkpoint: null
+    backbone: "wavlm-large"
+  cfprf:
+    name: "CFPRF"
+    repo: "https://github.com/ItzJuny/CFPRF"
+    checkpoint: null
+    backbone: "wav2vec2-xlsr"
+  mrm:
+    name: "MRM"
+    repo: "https://github.com/hieuthi/MultiResoModel-Simple"
+    checkpoint: null
+    backbone: "ssl"
+
+calibration:
+  methods: ["platt", "temperature", "isotonic"]
+  include_uncalibrated: true
+  cv_folds: 5
+
+cpsl:
+  alpha_utterance: 0.05
+  alpha_segment: 0.10
+  alpha_sweep: [0.01, 0.05, 0.10]
+  nonconformity: "max"
+  logsumexp_beta: [1.0, 5.0, 10.0, 20.0]
+  classes: ["real", "partially_fake", "fully_fake"]
+
+pdsm:
+  saliency_method: "ig"
+  n_steps_ig: 50
+  n_samples_shap: 25
+  aligner: "mfa"
+  window_baselines: [50, 100]
+  subsample_utterances: 750
+
+evidence:
+  schema_version: "1.0"
+
+experiments:
+  output_dir: "./results"
+  codecs: ["aac", "opus", "amr", "g711"]
+  resolutions_ms: [20, 40, 80, 160, 320, 640]
