@@ -1,0 +1,31 @@
+# UWS internal hooks (session-specific)
+.uws/
+
+# Claude Code project config
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# pytest
+.pytest_cache/
+
+# Data and results (large files)
+xps_forensic/data/
+xps_forensic/results/

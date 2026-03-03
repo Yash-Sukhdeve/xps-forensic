@@ -1,0 +1,62 @@
+# UWS Workflow State (Schema v2.0)
+# Auto-generated on 2026-03-02T11:04:28-05:00
+
+# Current workflow position
+current_phase: "phase_1_planning"
+current_checkpoint: "CP_DETECTOR_RISK_ANALYSIS"
+
+# Project metadata
+project:
+  name: "Explainablility"
+  type: "research"
+  initialized: true
+  init_date: "2026-03-02T11:04:28-05:00"
+
+# Active agent tracking
+active_agent:
+  name: "literature_review"
+  activated_at: "2026-03-02T12:00:00-05:00"
+  status: "active"
+
+# Enabled skills
+enabled_skills: ["literature_search", "synthesis"]
+
+# Phase progress tracking
+phases:
+  phase_1_planning:
+    status: "active"
+    progress: 75
+    started_at: "2026-03-02T11:04:28-05:00"
+  phase_2_implementation:
+    status: "pending"
+    progress: 0
+  phase_3_validation:
+    status: "pending"
+    progress: 0
+  phase_4_delivery:
+    status: "pending"
+    progress: 0
+  phase_5_maintenance:
+    status: "pending"
+    progress: 0
+
+# System health
+health:
+  status: "healthy"
+  last_check: "2026-03-02T14:00:00-05:00"
+
+# Schema metadata
+metadata:
+  schema_version: "2.0"
+  last_updated: "2026-03-02T14:00:00-05:00"
+  created_by: "claude-code-integration"
+research_phase: "experiment_design"
+last_updated: "2026-03-02T15:22:17-05:00"
+
+# Completed artifacts
+artifacts:
+  xai_research: ".workflow/xai-research.md"
+  dataset_research: ".workflow/dataset-research.md"
+  main_report: "deep-research-report.md"
+  detector_selection: ".workflow/detector-selection.md"
+  detector_risk_analysis: ".workflow/detector-risk-analysis.md"
