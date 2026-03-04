@@ -1,0 +1,11 @@
+# E1: Baseline Detection & Localization
+# Fine-tune BAM/SAL on PartialSpoof, evaluate all 4 detectors
+# Report: Utt-EER, Seg-EER (20/160ms), Seg-F1
+# Goal: Reproduce published numbers to establish trust
+
+experiment: e1_baseline
+detectors: [bam, sal, cfprf, mrm]
+dataset: partialspoof
+split: eval
+resolutions_ms: [20, 40, 80, 160, 320, 640]
+n_bootstrap: 1000
