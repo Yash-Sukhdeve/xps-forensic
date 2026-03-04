@@ -1,6 +1,5 @@
 """Tests for evidence packaging."""
 import json
-import pytest
 from xps_forensic.evidence.schema import EvidencePackage, validate_evidence
 
 
@@ -51,3 +50,16 @@ class TestEvidenceSchema:
         )
         errors = validate_evidence(pkg)
         assert len(errors) == 0
+
+    def test_validate_catches_errors(self):
+        pkg = EvidencePackage(
+            utterance_id="",
+            detector="",
+            calibration_method="temperature",
+            prediction_set=set(),
+            coverage_guarantee=1.5,
+            segment_predictions=[0, 1],
+            crc_threshold=None,
+        )
+        errors = validate_evidence(pkg)
+        assert len(errors) >= 4  # missing id, detector, empty set, invalid coverage, no threshold
