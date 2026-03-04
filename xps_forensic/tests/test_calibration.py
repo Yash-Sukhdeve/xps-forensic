@@ -7,6 +7,12 @@ from xps_forensic.calibration.methods import (
     IsotonicCalibrator,
     calibrate_scores,
 )
+from xps_forensic.calibration.metrics import (
+    expected_calibration_error,
+    brier_score,
+    negative_log_likelihood,
+    reliability_diagram_data,
+)
 
 
 @pytest.fixture
@@ -48,6 +54,19 @@ class TestTemperatureScaling:
         assert calibrated.shape == scores.shape
         assert temp.temperature > 0
 
+    def test_temperature_bounds(self, calibration_data):
+        scores, labels = calibration_data
+        temp = TemperatureScaling()
+        temp.fit(scores, labels)
+        assert 0.01 <= temp.temperature <= 10.0
+
+    def test_output_in_unit_interval(self, calibration_data):
+        scores, labels = calibration_data
+        temp = TemperatureScaling()
+        temp.fit(scores, labels)
+        calibrated = temp.transform(scores)
+        assert np.all(calibrated >= 0) and np.all(calibrated <= 1)
+
 
 class TestIsotonicCalibrator:
     def test_fit_transform(self, calibration_data):
@@ -73,14 +92,6 @@ class TestCalibrateScores:
             assert cal_scores.shape == scores.shape
 
 
-from xps_forensic.calibration.metrics import (
-    expected_calibration_error,
-    brier_score,
-    negative_log_likelihood,
-    reliability_diagram_data,
-)
-
-
 class TestCalibrationMetrics:
     def test_ece_perfect(self):
         scores = np.array([0.1, 0.2, 0.8, 0.9])
@@ -94,10 +105,20 @@ class TestCalibrationMetrics:
         ece = expected_calibration_error(scores, labels, n_bins=2)
         assert ece > 0.5
 
+    def test_ece_in_unit_interval(self, calibration_data):
+        scores, labels = calibration_data
+        ece = expected_calibration_error(scores, labels)
+        assert 0.0 <= ece <= 1.0
+
     def test_brier_perfect(self):
         scores = np.array([0.0, 0.0, 1.0, 1.0])
         labels = np.array([0, 0, 1, 1])
         assert brier_score(scores, labels) == pytest.approx(0.0)
+
+    def test_brier_in_unit_interval(self, calibration_data):
+        scores, labels = calibration_data
+        bs = brier_score(scores, labels)
+        assert 0.0 <= bs <= 1.0
 
     def test_nll_finite(self):
         scores = np.array([0.1, 0.2, 0.8, 0.9])
@@ -112,3 +133,11 @@ class TestCalibrationMetrics:
         labels = (scores > 0.5).astype(int)
         bins, accs, confs, counts = reliability_diagram_data(scores, labels)
         assert len(bins) == len(accs) == len(confs) == len(counts)
+
+    def test_reliability_diagram_counts_sum(self):
+        rng = np.random.default_rng(42)
+        n = 200
+        scores = rng.uniform(0, 1, n)
+        labels = (scores > 0.5).astype(int)
+        _, _, _, counts = reliability_diagram_data(scores, labels)
+        assert counts.sum() == n
