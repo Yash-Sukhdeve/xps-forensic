@@ -39,8 +39,8 @@ from xps_forensic.pdsm_ps.discretize import (
 
 
 class TestDiscretize:
-    def test_phoneme_discretization(self):
-        frame_saliency = np.random.uniform(0, 1, 50)
+    def test_phoneme_discretization(self, rng):
+        frame_saliency = rng.uniform(0, 1, 50)
         phonemes = align_phonemes_mock(duration_sec=1.0, n_phonemes=10)
         result = discretize_by_phonemes(frame_saliency, phonemes, frame_shift_ms=20)
         assert len(result) == 10
@@ -48,21 +48,22 @@ class TestDiscretize:
             assert isinstance(ps, PhonemeSaliency)
             assert ps.mean_saliency >= 0
 
-    def test_fixed_window_discretization(self):
-        frame_saliency = np.random.uniform(0, 1, 100)
+    def test_fixed_window_discretization(self, rng):
+        frame_saliency = rng.uniform(0, 1, 100)
         result = discretize_by_fixed_window(frame_saliency, window_ms=100, frame_shift_ms=20)
         assert len(result) == 20  # 100 frames * 20ms / 100ms = 20 windows
         for ws in result:
             assert ws.mean_saliency >= 0
 
-    def test_discretized_vs_raw(self):
-        """Discretized saliency should have same total as raw."""
-        frame_saliency = np.random.uniform(0, 1, 50)
+    def test_discretized_vs_raw(self, rng):
+        """Discretized saliency sum(mean*n_frames) should equal raw sum."""
+        frame_saliency = rng.uniform(0, 1, 50)
         phonemes = align_phonemes_mock(duration_sec=1.0, n_phonemes=10)
         result = discretize_by_phonemes(frame_saliency, phonemes, frame_shift_ms=20)
         total_disc = sum(ps.mean_saliency * ps.n_frames for ps in result)
         total_raw = frame_saliency.sum()
-        assert abs(total_disc - total_raw) < total_raw * 0.2
+        # Mock alignment covers all frames exactly, so totals should match
+        assert abs(total_disc - total_raw) < 1e-6
 
 
 from xps_forensic.pdsm_ps.faithfulness import (
@@ -99,18 +100,23 @@ class TestFaithfulness:
         assert iou == pytest.approx(4 / 6)
 
 
-from xps_forensic.pdsm_ps import PDSMPSPipeline
+from xps_forensic.pdsm_ps import PDSMPSPipeline, PDSMPSResult
 
 
 class TestPDSMPSPipeline:
-    def test_run_mock(self):
+    def test_run_mock(self, rng):
         pipeline = PDSMPSPipeline(aligner="mock", saliency_method="mock")
         result = pipeline.run(
-            frame_saliency=np.random.uniform(0, 1, 50),
+            frame_saliency=rng.uniform(0, 1, 50),
             duration_sec=1.0,
             spoofed_frame_mask=np.concatenate([np.zeros(20), np.ones(15), np.zeros(15)]),
         )
-        assert "phoneme_saliencies" in result
-        assert "top_k_phonemes" in result
-        assert "phoneme_iou" in result
-        assert len(result["phoneme_saliencies"]) > 0
+        assert isinstance(result, PDSMPSResult)
+        assert result.phoneme_iou_score >= 0
+        assert len(result.phoneme_saliencies) > 0
+        assert len(result.top_k_phonemes) > 0
+
+    def test_mfa_requires_wav_path(self):
+        pipeline = PDSMPSPipeline(aligner="mfa")
+        with pytest.raises(ValueError, match="requires wav_path"):
+            pipeline.run(frame_saliency=np.zeros(50), duration_sec=1.0)

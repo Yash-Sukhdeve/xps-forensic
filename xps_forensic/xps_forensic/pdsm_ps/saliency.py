@@ -10,8 +10,6 @@ Reference: Gupta et al. (Interspeech 2024) for PDSM methodology.
 """
 from __future__ import annotations
 
-from typing import Callable
-
 import numpy as np
 import torch
 
@@ -28,6 +26,8 @@ def compute_integrated_gradients(
     target_class: int = 1,
     n_steps: int = 50,
     baseline: torch.Tensor | None = None,
+    sample_rate: int = 16000,
+    frame_shift_ms: int = 20,
 ) -> np.ndarray:
     """Compute Integrated Gradients attribution.
 
@@ -37,6 +37,8 @@ def compute_integrated_gradients(
         target_class: Class to attribute (1 = fake).
         n_steps: Number of interpolation steps.
         baseline: Reference input (default: zeros).
+        sample_rate: Audio sample rate in Hz (default 16000).
+        frame_shift_ms: Frame shift in ms (default 20).
 
     Returns:
         Frame-level saliency, shape (n_frames,).
@@ -44,6 +46,7 @@ def compute_integrated_gradients(
     if baseline is None:
         baseline = torch.zeros_like(waveform)
 
+    model.eval()
     waveform.requires_grad_(True)
 
     scaled_inputs = [
@@ -75,7 +78,7 @@ def compute_integrated_gradients(
     avg_grad = torch.stack(gradients).mean(dim=0)
     ig = (waveform - baseline) * avg_grad
 
-    samples_per_frame = 320
+    samples_per_frame = sample_rate * frame_shift_ms // 1000
     n_samples = ig.shape[-1]
     n_frames = n_samples // samples_per_frame
 

@@ -17,6 +17,16 @@ from .discretize import (
 )
 from .faithfulness import phoneme_iou
 
+__all__ = [
+    "PhonemeSegment",
+    "PhonemeSaliency",
+    "PDSMPSResult",
+    "PDSMPSPipeline",
+    "discretize_by_phonemes",
+    "discretize_by_fixed_window",
+    "phoneme_iou",
+]
+
 
 @dataclass
 class PDSMPSResult:
@@ -49,7 +59,7 @@ class PDSMPSPipeline:
         spoofed_frame_mask: np.ndarray | None = None,
         wav_path: str | None = None,
         phoneme_segments: list[PhonemeSegment] | None = None,
-    ) -> dict:
+    ) -> PDSMPSResult:
         """Run PDSM-PS analysis.
 
         Args:
@@ -60,7 +70,7 @@ class PDSMPSPipeline:
             phoneme_segments: Pre-computed phoneme segments (optional).
 
         Returns:
-            Dict with phoneme_saliencies, top_k_phonemes, phoneme_iou.
+            PDSMPSResult with phoneme_saliencies, top_k_phonemes, phoneme_iou_score.
         """
         # Step 1: Get phoneme boundaries
         if phoneme_segments is None:
@@ -73,6 +83,10 @@ class PDSMPSPipeline:
             elif self.aligner == "whisperx" and wav_path:
                 from .alignment import align_with_whisperx
                 phoneme_segments = align_with_whisperx(wav_path)
+            elif self.aligner in ("mfa", "whisperx") and not wav_path:
+                raise ValueError(
+                    f"aligner='{self.aligner}' requires wav_path, but wav_path is None"
+                )
             else:
                 phoneme_segments = align_phonemes_mock(duration_sec)
 
@@ -103,9 +117,9 @@ class PDSMPSPipeline:
                         gt_indices.add(i)
             iou_score = phoneme_iou(top_k_indices, gt_indices)
 
-        return {
-            "phoneme_saliencies": phoneme_saliencies,
-            "top_k_phonemes": top_k_phonemes,
-            "phoneme_iou": iou_score,
-            "aligner": self.aligner,
-        }
+        return PDSMPSResult(
+            phoneme_saliencies=phoneme_saliencies,
+            top_k_phonemes=top_k_phonemes,
+            phoneme_iou_score=iou_score,
+            aligner_used=self.aligner,
+        )
