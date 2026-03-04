@@ -72,6 +72,21 @@ class ConformalRiskControl:
             Per-utterance frame-level binary ground truth (1 = spoof).
         """
         n = len(frame_scores)
+        # Validate: tFNR is undefined for all-bonafide utterances.
+        # Including them silently returns 0.0 and deflates risk estimates.
+        for i, labels in enumerate(frame_labels):
+            if self.risk_metric == "tFNR" and labels.sum() == 0:
+                raise ValueError(
+                    f"frame_labels[{i}] has no spoofed frames. "
+                    f"tFNR is undefined for all-bonafide utterances. "
+                    f"Filter calibration data to utterances with spoof regions."
+                )
+            if self.risk_metric == "tFDR" and labels.sum() == len(labels):
+                raise ValueError(
+                    f"frame_labels[{i}] has no bonafide frames. "
+                    f"tFDR is undefined for all-spoofed utterances. "
+                    f"Filter calibration data appropriately."
+                )
         risk_fn = compute_tFNR if self.risk_metric == "tFNR" else compute_tFDR
 
         risks = []

@@ -26,11 +26,19 @@ class TestNonconformityScores:
         assert lse > 0.0
         assert np.isfinite(lse)
 
-    def test_logsumexp_beta_sensitivity(self):
-        frame_scores = np.array([0.5, 0.5, 0.5])
-        lse_low = logsumexp_score(frame_scores, beta=1.0)
-        lse_high = logsumexp_score(frame_scores, beta=20.0)
-        assert lse_high > lse_low or abs(lse_high - lse_low) < 0.01
+    def test_logsumexp_converges_to_max(self):
+        frame_scores = np.array([0.1, 0.3, 0.9, 0.2])
+        max_val = max_score(frame_scores)
+        lse_high_beta = logsumexp_score(frame_scores, beta=100.0)
+        # With 4 frames and beta=100, residual is log(4)/100 ≈ 0.014
+        assert abs(lse_high_beta - max_val) < 0.02
+
+    def test_empty_input_raises(self):
+        empty = np.array([])
+        with pytest.raises(ValueError, match="non-empty"):
+            max_score(empty)
+        with pytest.raises(ValueError, match="non-empty"):
+            logsumexp_score(empty)
 
     def test_compute_nonconformity_batch(self, dummy_frame_scores):
         scores = compute_nonconformity(dummy_frame_scores, method="max")
@@ -70,6 +78,24 @@ class TestSCPAPS:
         coverage = covered / len(test_labels)
         assert coverage >= 1 - alpha - 0.10
 
+    def test_empty_class_in_calibration(self, rng):
+        """When a class has no calibration examples, quantile defaults to 1.0."""
+        n_cal = 100
+        cal_scores = rng.uniform(0, 1, n_cal)
+        # Only classes 0 and 1, never class 2
+        cal_labels = rng.integers(0, 2, n_cal)
+        scp = SCPAPS(alpha=0.10, classes=["real", "partially_fake", "fully_fake"])
+        scp.calibrate(cal_scores, cal_labels)
+        quantiles = scp.get_quantiles()
+        assert quantiles["fully_fake"] == 1.0
+
+    def test_invalid_labels_raise(self, rng):
+        cal_scores = rng.uniform(0, 1, 50)
+        cal_labels = np.array([0, 1, 5] + [0] * 47)  # 5 is invalid
+        scp = SCPAPS(alpha=0.10, classes=["real", "partially_fake", "fully_fake"])
+        with pytest.raises(ValueError, match="Labels must be in"):
+            scp.calibrate(cal_scores, cal_labels)
+
     def test_prediction_set_size(self, rng):
         n = 500
         scores = rng.uniform(0, 1, n)
@@ -90,32 +116,65 @@ from xps_forensic.cpsl.crc import ConformalRiskControl
 
 class TestCRC:
     def test_calibrate_threshold(self, dummy_frame_scores, dummy_segment_labels):
+        # Filter to only utterances with spoof regions (odd-indexed)
+        cal_scores = [dummy_frame_scores[i] for i in range(8) if i % 2 == 1]
+        cal_labels = [dummy_segment_labels[i] for i in range(8) if i % 2 == 1]
         crc = ConformalRiskControl(alpha=0.10, risk_metric="tFNR")
-        crc.calibrate(
-            frame_scores=dummy_frame_scores[:8],
-            frame_labels=dummy_segment_labels[:8],
-        )
+        crc.calibrate(frame_scores=cal_scores, frame_labels=cal_labels)
         assert crc.threshold is not None
         assert 0 <= crc.threshold <= 1
 
     def test_predict(self, dummy_frame_scores, dummy_segment_labels):
+        cal_scores = [dummy_frame_scores[i] for i in range(8) if i % 2 == 1]
+        cal_labels = [dummy_segment_labels[i] for i in range(8) if i % 2 == 1]
         crc = ConformalRiskControl(alpha=0.10, risk_metric="tFNR")
-        crc.calibrate(
-            frame_scores=dummy_frame_scores[:8],
-            frame_labels=dummy_segment_labels[:8],
-        )
+        crc.calibrate(frame_scores=cal_scores, frame_labels=cal_labels)
         preds = crc.predict(dummy_frame_scores[8:])
         assert len(preds) == 2
         for p in preds:
             assert p.dtype == int
             assert set(np.unique(p)).issubset({0, 1})
 
+    def test_calibrate_rejects_all_bonafide(self, rng):
+        """CRC should reject calibration data with all-bonafide utterances."""
+        frame_scores = [rng.uniform(0, 1, 100) for _ in range(5)]
+        # First utterance has no spoof frames
+        frame_labels = [np.zeros(100, dtype=int)] + [
+            np.concatenate([np.zeros(50, dtype=int), np.ones(50, dtype=int)])
+            for _ in range(4)
+        ]
+        crc = ConformalRiskControl(alpha=0.10, risk_metric="tFNR")
+        with pytest.raises(ValueError, match="no spoofed frames"):
+            crc.calibrate(frame_scores, frame_labels)
+
+    def test_tFDR_metric(self, rng):
+        """CRC with tFDR risk metric calibrates and predicts."""
+        frame_scores = []
+        frame_labels = []
+        for _ in range(20):
+            n_frames = 100
+            scores = rng.uniform(0.1, 0.4, n_frames)
+            labels = np.zeros(n_frames, dtype=int)
+            # Ensure not all-spoofed (tFDR would be undefined)
+            start = 30
+            end = 70
+            scores[start:end] = rng.uniform(0.6, 0.95, end - start)
+            labels[start:end] = 1
+            frame_scores.append(scores)
+            frame_labels.append(labels)
+        crc = ConformalRiskControl(alpha=0.10, risk_metric="tFDR")
+        crc.calibrate(frame_scores, frame_labels)
+        assert crc.threshold is not None
+        preds = crc.predict(frame_scores[:5])
+        assert len(preds) == 5
+
     def test_tFNR_controlled(self, rng):
         """Verify that CRC controls tFNR on test set.
 
-        Calibration and evaluation are both restricted to utterances
-        containing spoofed segments, consistent with the composed
-        pipeline where CRC Stage 2 is applied only to partial spoofs.
+        Intentional deviation from plan: all utterances have spoofed regions
+        (plan used 50% bonafide). This is correct because CRC Stage 2 is
+        only applied to partial spoofs in the composed pipeline, so
+        calibration data should only contain utterances with spoof regions.
         """
         alpha = 0.20
         n = 100
@@ -154,7 +213,8 @@ class TestCPSLPipeline:
         alpha1 = 0.05
         alpha2 = 0.10
         pipeline = CPSLPipeline(alpha_utterance=alpha1, alpha_segment=alpha2)
-        assert pipeline.composed_guarantee == pytest.approx(0.855)
+        # Bonferroni bound: 1 - alpha1 - alpha2 (unconditionally valid)
+        assert pipeline.composed_guarantee == pytest.approx(0.85)
 
     def test_end_to_end(self, rng):
         n = 200
@@ -189,5 +249,6 @@ class TestCPSLPipeline:
         results = pipeline.predict(frame_scores_list[160:])
         assert len(results) == 40
         for r in results:
-            assert "prediction_set" in r
-            assert "segment_predictions" in r
+            # CPSLResult dataclass attributes
+            assert isinstance(r.prediction_set, set)
+            assert r.segment_predictions is None or hasattr(r.segment_predictions, 'shape')

@@ -34,7 +34,14 @@ def max_score(frame_scores: np.ndarray) -> float:
     -------
     float
         Maximum frame score.
+
+    Raises
+    ------
+    ValueError
+        If frame_scores is empty.
     """
+    if len(frame_scores) == 0:
+        raise ValueError("frame_scores must be non-empty")
     return float(np.max(frame_scores))
 
 
@@ -54,7 +61,14 @@ def logsumexp_score(frame_scores: np.ndarray, beta: float = 10.0) -> float:
     -------
     float
         Smooth-max aggregated score.
+
+    Raises
+    ------
+    ValueError
+        If frame_scores is empty.
     """
+    if len(frame_scores) == 0:
+        raise ValueError("frame_scores must be non-empty")
     T = len(frame_scores)
     return float(_logsumexp(beta * frame_scores) / beta - np.log(T) / beta)
 

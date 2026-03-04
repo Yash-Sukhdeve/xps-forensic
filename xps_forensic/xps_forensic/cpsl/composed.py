@@ -12,8 +12,11 @@ Stage 2 (CRC) is applied ONLY when the prediction set includes
 ``partially_fake`` (class index 1).  It controls E[tFNR] <= alpha_segment
 for the segment-level localization.
 
-The composed guarantee follows from Bonferroni's inequality applied
-to the two independent conformal stages.
+The composed guarantee follows from Bonferroni's inequality:
+P(both correct) >= 1 - alpha1 - alpha2.  Note: the product bound
+(1-alpha1)(1-alpha2) requires strict independence, which does not
+hold here because partial-spoof utterances participate in both
+Stage 1 and Stage 2 calibration.
 
 Reference
 ---------
@@ -101,11 +104,16 @@ class CPSLPipeline:
 
     @property
     def composed_guarantee(self) -> float:
-        """Lower bound on P(both stages correct).
+        """Lower bound on P(both stages correct) via Bonferroni.
 
-        Returns (1 - alpha_utterance) * (1 - alpha_segment).
+        Returns 1 - alpha_utterance - alpha_segment.
+
+        Note: the product bound (1-a1)(1-a2) would require strict
+        independence between stages, which does not hold because
+        partial-spoof calibration data is shared between stages.
+        Bonferroni's bound is unconditionally valid.
         """
-        return (1 - self.alpha_utterance) * (1 - self.alpha_segment)
+        return 1 - self.alpha_utterance - self.alpha_segment
 
     def calibrate(
         self,
@@ -149,7 +157,7 @@ class CPSLPipeline:
         self,
         frame_scores_list: list[np.ndarray],
         utterance_ids: list[str] | None = None,
-    ) -> list[dict]:
+    ) -> list[CPSLResult]:
         """Run the full CPSL pipeline on test utterances.
 
         Stage 1 produces prediction sets.  If partially_fake (class 1)
@@ -165,10 +173,8 @@ class CPSLPipeline:
 
         Returns
         -------
-        list[dict]
-            Per-utterance results with keys: utterance_id,
-            nonconformity_score, prediction_set, prediction_set_labels,
-            segment_predictions, crc_threshold.
+        list[CPSLResult]
+            Per-utterance structured results.
         """
         if utterance_ids is None:
             utterance_ids = [f"utt_{i}" for i in range(len(frame_scores_list))]
@@ -182,18 +188,18 @@ class CPSLPipeline:
         for i, (ps, scores, uid) in enumerate(
             zip(pred_sets, frame_scores_list, utterance_ids)
         ):
-            result = {
-                "utterance_id": uid,
-                "nonconformity_score": float(nc_scores[i]),
-                "prediction_set": ps,
-                "prediction_set_labels": {self.CLASS_NAMES[c] for c in ps},
-                "segment_predictions": None,
-                "crc_threshold": None,
-            }
+            seg_preds = None
+            crc_thresh = None
             # Apply Stage 2 only if partially_fake is in the prediction set
             if 1 in ps and self.stage2.threshold is not None:
                 seg_preds = self.stage2.predict([scores])[0]
-                result["segment_predictions"] = seg_preds
-                result["crc_threshold"] = self.stage2.threshold
-            results.append(result)
+                crc_thresh = self.stage2.threshold
+            results.append(CPSLResult(
+                utterance_id=uid,
+                nonconformity_score=float(nc_scores[i]),
+                prediction_set=ps,
+                prediction_set_labels={self.CLASS_NAMES[c] for c in ps},
+                segment_predictions=seg_preds,
+                crc_threshold=crc_thresh,
+            ))
         return results

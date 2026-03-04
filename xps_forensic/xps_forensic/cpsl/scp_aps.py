@@ -64,6 +64,13 @@ class SCPAPS:
         labels : np.ndarray, shape (n_cal,)
             Integer class labels (0, 1, 2) for calibration examples.
         """
+        unique = set(np.unique(labels))
+        valid = set(range(self.n_classes))
+        if not unique.issubset(valid):
+            raise ValueError(
+                f"Labels must be in {valid}, got {unique}"
+            )
+
         if self._class_conditional:
             for c in range(self.n_classes):
                 mask = labels == c

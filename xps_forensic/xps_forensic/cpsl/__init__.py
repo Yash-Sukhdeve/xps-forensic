@@ -8,14 +8,14 @@ Two-stage conformal prediction framework:
 Key design decision: CP at utterance level ONLY (NOT frame-level --
 temporal autocorrelation violates exchangeability).
 """
-from xps_forensic.cpsl.nonconformity import (
+from .nonconformity import (
     max_score,
     logsumexp_score,
     compute_nonconformity,
 )
-from xps_forensic.cpsl.scp_aps import SCPAPS
-from xps_forensic.cpsl.crc import ConformalRiskControl
-from xps_forensic.cpsl.composed import CPSLPipeline, CPSLResult
+from .scp_aps import SCPAPS
+from .crc import ConformalRiskControl
+from .composed import CPSLPipeline, CPSLResult
 
 __all__ = [
     "max_score",
