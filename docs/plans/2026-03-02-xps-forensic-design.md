@@ -43,7 +43,7 @@ We evaluate across four partial spoof datasets spanning different threat models 
 - Dual calibration: tFNR + tFDR for precision control
 - tIoU reported as empirical metric (non-monotone, not directly CRC-compatible)
 
-**Composed guarantee:** P(Stage 1 correct AND Stage 2 correct) ≥ (1-α₁)(1-α₂)
+**Composed guarantee:** P(Stage 1 correct AND Stage 2 correct) ≥ 1 − α₁ − α₂ (Bonferroni bound). The product bound (1 − α₁)(1 − α₂) would require independence between stages, which is not assumed here. See Angelopoulos & Bates (2023) for discussion of conformal coverage composition.
 
 **Novelty verification:** Exhaustive search confirms NO prior work applies conformal prediction to audio spoof/deepfake detection at any level. CONCH (Hore & Ramdas, 2026) exists for changepoint localization but targets single changepoints, not dense frame-level binary classification. Ernez et al. (2023) apply CP to wav2vec ASR — different task, must be cited and distinguished.
 
@@ -51,7 +51,7 @@ We evaluate across four partial spoof datasets spanning different threat models 
 
 **Must disclose in paper:**
 - Marginal vs conditional coverage distinction (cannot guarantee per-utterance coverage)
-- Composed guarantee under joint Stage 1+2
+- Composed guarantee under joint Stage 1+2: Bonferroni bound 1 − α₁ − α₂; product bound requires independence and is not generally valid in this pipeline
 - Cite Barber & Pananjady (2025) on coverage under temporal dependence
 
 ### C2: PDSM-PS — Phoneme-Discretized Saliency for Partial Spoofs
@@ -305,7 +305,7 @@ III. PROPOSED METHOD: XPS-FORENSIC (3 pages)
    D. CPSL Stage 2: Segment-level CRC on tFNR
       - tFNR monotonicity proof
       - Dual tFNR + tFDR calibration
-      - Composed guarantee theorem
+      - Composed guarantee via Bonferroni (1 − α₁ − α₂); conditions required for product bound
    E. PDSM-PS: Phoneme-discretized saliency for localization
    F. Evidence packaging (JSON schema)
 

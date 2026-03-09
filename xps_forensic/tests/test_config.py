@@ -18,8 +18,8 @@ def test_config_device_detection():
 
 def test_config_variable_resolution():
     cfg = load_config()
-    assert cfg.data.partialspoof.path == "./data/PartialSpoof"
-    assert cfg.data.hqmpsd.path == "./data/HQ-MPSD-EN"
+    assert cfg.data.partialspoof.path == f"{cfg.data.root}/PartialSpoof"
+    assert cfg.data.hqmpsd.path == f"{cfg.data.root}/HQ-MPSD-EN"
 
 
 def test_config_override():

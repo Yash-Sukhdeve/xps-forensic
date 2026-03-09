@@ -2,14 +2,14 @@
 # ===========================================================================
 # download_datasets.sh — Dataset and detector-repo setup for XPS-Forensic
 #
-# Checks whether each required dataset directory exists under ./data/
-# and prints download instructions if not.  Clones detector model
-# repositories into ./external/.
+# Checks whether each required dataset directory exists under the shared
+# dataset directory and prints download instructions if not.  Clones
+# detector model repositories into ./external/.
 # ===========================================================================
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DATA_DIR="${PROJECT_ROOT}/data"
+DATA_DIR="/media/lab2208/ssd/datasets"
 EXT_DIR="${PROJECT_ROOT}/external"
 
 echo "=== XPS-Forensic: Dataset & Detector Setup ==="

@@ -5,7 +5,7 @@ project:
 device: "auto"
 
 data:
-  root: "./data"
+  root: "/media/lab2208/ssd/datasets"
   partialspoof:
     path: "${data.root}/PartialSpoof"
     sample_rate: 16000

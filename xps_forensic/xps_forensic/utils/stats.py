@@ -96,6 +96,8 @@ def binomial_coverage_test(
 
 def friedman_nemenyi(
     results_matrix: np.ndarray,
+    *,
+    higher_is_better: bool = True,
 ) -> dict:
     """Friedman test with Nemenyi post-hoc critical difference.
 
@@ -118,17 +120,20 @@ def friedman_nemenyi(
     results_matrix = np.asarray(results_matrix, dtype=float)
     n_datasets, k = results_matrix.shape
 
-    # Rank each row (higher value -> rank 1)
+    # Rank each row: best gets rank 1. If higher_is_better=False,
+    # smaller values are better (e.g., ECE, NLL, Brier).
     ranks = np.zeros_like(results_matrix)
     for i in range(n_datasets):
-        # argsort ascending, then invert: best (highest) gets rank 1
-        order = np.argsort(-results_matrix[i])
+        if higher_is_better:
+            order = np.argsort(-results_matrix[i])  # descending
+        else:
+            order = np.argsort(results_matrix[i])   # ascending
         for rank, idx in enumerate(order, start=1):
             ranks[i, idx] = rank
 
     mean_ranks = ranks.mean(axis=0)
 
-    # Friedman test (pass raw data — scipy ranks internally)
+    # Friedman test (pass raw data — scipy ranks internally). Orientation does not affect p-value.
     stat, p = sp_stats.friedmanchisquare(
         *[results_matrix[:, j] for j in range(k)]
     )

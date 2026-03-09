@@ -28,4 +28,5 @@ venv/
 
 # Data and results (large files)
 xps_forensic/data/
+!xps_forensic/xps_forensic/data/
 xps_forensic/results/
