@@ -94,6 +94,8 @@ class CPSLPipeline:
         alpha_segment: float = 0.10,
         nonconformity_method: str = "max",
         nonconformity_beta: float = 10.0,
+        score_frame_shift_ms: float = 20.0,
+        label_frame_shift_ms: float = 10.0,
     ):
         self.alpha_utterance = alpha_utterance
         self.alpha_segment = alpha_segment
@@ -101,6 +103,8 @@ class CPSLPipeline:
         self.nc_beta = nonconformity_beta
         self.stage1 = SCPAPS(alpha=alpha_utterance, classes=self.CLASS_NAMES)
         self.stage2 = ConformalRiskControl(alpha=alpha_segment, risk_metric="tFNR")
+        self.score_fs_ms = score_frame_shift_ms
+        self.label_fs_ms = label_frame_shift_ms
 
     @property
     def composed_guarantee(self) -> float:
@@ -145,13 +149,32 @@ class CPSLPipeline:
         # Stage 2: calibrate CRC on partially_fake utterances only
         partial_mask = utterance_labels == 1
         if partial_mask.any():
-            partial_frame_scores = [
-                fs for fs, m in zip(frame_scores_list, partial_mask) if m
-            ]
-            partial_frame_labels = [
-                fl for fl, m in zip(frame_labels_list, partial_mask) if m
-            ]
-            self.stage2.calibrate(partial_frame_scores, partial_frame_labels)
+            partial_frame_scores = [fs for fs, m in zip(frame_scores_list, partial_mask) if m]
+            partial_frame_labels = [fl for fl, m in zip(frame_labels_list, partial_mask) if m]
+
+            # Align to label grid (e.g., 10 ms) by upsampling scores
+            aligned_scores = []
+            aligned_labels = []
+            from ..utils.metrics import upsample_binary_predictions_to_label_grid
+            for fs, fl in zip(partial_frame_scores, partial_frame_labels):
+                # For calibration risk computation, we need binary predictions vs labels.
+                # We upsample scores later after thresholding; here we just keep raw scores
+                # and align after thresholding inside CRC by comparing lengths.
+                # However, CRC expects equal-length arrays; to ensure this, we upsample
+                # a dummy binary mask to determine the target length and then truncate.
+                # Simpler approach: store labels as-is; provide scores as-is and let CRC
+                # operate on scores directly but we must align before risk. We perform
+                # alignment here by creating a per-label-frame score via repetition.
+                ratio = int(round(self.score_fs_ms / self.label_fs_ms))
+                if ratio <= 0:
+                    ratio = 1
+                # Repeat each score to label grid; then truncate to label length
+                fs_rep = np.repeat(fs, ratio)
+                L = min(len(fs_rep), len(fl))
+                aligned_scores.append(fs_rep[:L])
+                aligned_labels.append(fl[:L])
+
+            self.stage2.calibrate(aligned_scores, aligned_labels)
 
     def predict(
         self,

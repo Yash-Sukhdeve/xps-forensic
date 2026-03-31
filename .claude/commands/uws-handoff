@@ -1,0 +1,26 @@
+---
+description: "Prepare handoff document for session end"
+allowed-tools:
+  - "Bash(cat:*)"
+  - "Bash(date:*)"
+  - "Read"
+  - "Write"
+---
+
+# Prepare UWS Handoff
+
+Update the handoff document (.workflow/handoff.md) with:
+
+1. **Current Status**: What phase/checkpoint we're at
+2. **Work Completed This Session**: Summary of what was done
+3. **Next Actions**: Prioritized list of what to do next
+4. **Blockers**: Any issues preventing progress
+5. **Critical Context**: Important decisions or information
+
+Read the current handoff:
+! cat .workflow/handoff.md 2>/dev/null || echo "No existing handoff"
+
+Then update it with fresh information from this session. Make sure to:
+- Update the timestamp
+- Keep it concise but complete
+- Focus on actionable next steps

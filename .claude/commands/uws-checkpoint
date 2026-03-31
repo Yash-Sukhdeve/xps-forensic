@@ -1,0 +1,36 @@
+---
+description: "Create a UWS checkpoint with message"
+argument-hint: "<message>"
+allowed-tools:
+  - "Bash(date:*)"
+  - "Bash(grep:*)"
+  - "Bash(sed:*)"
+  - "Bash(echo:*)"
+---
+
+# Create UWS Checkpoint
+
+Create a checkpoint with the message: $ARGUMENTS
+
+Execute this to create the checkpoint:
+
+```bash
+# Get current checkpoint info
+LAST_CP=$(grep -oE "CP_[0-9]+_[0-9]+" .workflow/checkpoints.log 2>/dev/null | tail -1 || echo "CP_1_000")
+PHASE=$(echo "$LAST_CP" | cut -d_ -f2)
+SEQ=$(echo "$LAST_CP" | cut -d_ -f3 | sed 's/^0*//')
+NEW_SEQ=$(printf "%03d" $((SEQ + 1)))
+NEW_CP="CP_${PHASE}_${NEW_SEQ}"
+TIMESTAMP=$(date -Iseconds)
+
+# Create checkpoint entry
+echo "${TIMESTAMP} | ${NEW_CP} | $ARGUMENTS" >> .workflow/checkpoints.log
+
+# Update state.yaml
+sed -i "s/current_checkpoint:.*/current_checkpoint: \"${NEW_CP}\"/" .workflow/state.yaml
+sed -i "s/last_updated:.*/last_updated: \"${TIMESTAMP}\"/" .workflow/state.yaml
+
+echo "Checkpoint ${NEW_CP} created: $ARGUMENTS"
+```
+
+After creating the checkpoint, confirm it was created successfully.

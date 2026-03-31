@@ -5,7 +5,7 @@ project:
 device: "auto"
 
 data:
-  root: "./data"
+  root: "/media/lab2208/ssd/datasets"
   partialspoof:
     path: "${data.root}/PartialSpoof"
     sample_rate: 16000
@@ -21,26 +21,35 @@ data:
     path: "${data.root}/LlamaPartialSpoof"
     sample_rate: 16000
 
+_external_root: &ext "/media/lab2208/ssd/Explainablility/xps_forensic/external"
+
 detectors:
   bam:
     name: "BAM"
     repo: "https://github.com/media-sec-lab/BAM"
-    checkpoint: null
+    checkpoint: "/media/lab2208/ssd/Explainablility/xps_forensic/external/BAM/bam_checkpoint/model.ckpt"
+    external_dir: "/media/lab2208/ssd/Explainablility/xps_forensic/external/BAM"
+    ssl_ckpt: "/media/lab2208/ssd/Explainablility/xps_forensic/external/BAM/pretrained/wavlm_large.pt"
     backbone: "wavlm-large"
   sal:
     name: "SAL"
     repo: "https://github.com/SentryMao/SAL"
     checkpoint: null
+    external_dir: "/media/lab2208/ssd/Explainablility/xps_forensic/external/SAL"
     backbone: "wavlm-large"
   cfprf:
     name: "CFPRF"
     repo: "https://github.com/ItzJuny/CFPRF"
-    checkpoint: null
+    checkpoint: "/media/lab2208/ssd/Explainablility/xps_forensic/external/CFPRF/checkpoints/1FDN_PS.pth"
+    external_dir: "/media/lab2208/ssd/Explainablility/xps_forensic/external/CFPRF"
+    ssl_path: "/media/lab2208/ssd/Explainablility/xps_forensic/external/CFPRF"
     backbone: "wav2vec2-xlsr"
   mrm:
     name: "MRM"
     repo: "https://github.com/hieuthi/MultiResoModel-Simple"
-    checkpoint: null
+    checkpoint: "/media/lab2208/ssd/Explainablility/xps_forensic/external/MRM/checkpoints/exp/baseline/55.pth"
+    external_dir: "/media/lab2208/ssd/Explainablility/xps_forensic/external/MRM"
+    ssl_path: "/media/lab2208/ssd/Explainablility/xps_forensic/external/MRM/pretrained/w2v_large_lv_fsh_swbd_cv_fixed.pt"
     backbone: "ssl"
 
 calibration:

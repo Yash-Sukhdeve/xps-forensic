@@ -24,3 +24,10 @@ results/
 outputs/
 *.pt
 *.ckpt
+*.pth
+
+# External detector repos (cloned at setup time)
+external/
+
+# Data (stored in shared location)
+data/

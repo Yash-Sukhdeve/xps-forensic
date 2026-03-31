@@ -1,0 +1,22 @@
+---
+description: "Manage SDLC workflow phases"
+argument-hint: "<status|start|next|goto|fail|reset> [details]"
+allowed-tools:
+  - "Bash(./.uws/scripts/sdlc.sh:*)"
+---
+
+# UWS SDLC Management
+
+Manage the Software Development Life Cycle.
+
+**Phases**: requirements -> design -> implementation -> verification -> deployment -> maintenance
+
+Run the appropriate command based on the user's request. If no argument given, show status.
+
+Arguments provided: $ARGUMENTS
+
+```bash
+./.uws/scripts/sdlc.sh $ARGUMENTS
+```
+
+If $ARGUMENTS is empty, run `./.uws/scripts/sdlc.sh status`.

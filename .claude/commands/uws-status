@@ -1,0 +1,24 @@
+---
+description: "Show UWS workflow status"
+allowed-tools:
+  - "Bash(cat:*)"
+  - "Bash(grep:*)"
+  - "Bash(tail:*)"
+  - "Bash(head:*)"
+  - "Bash(./.uws/scripts/*:*)"
+---
+
+# UWS Workflow Status
+
+Show the current workflow state including phase, checkpoint, and recent activity.
+
+## Current State
+! cat .workflow/state.yaml 2>/dev/null || echo "No state.yaml found"
+
+## Recent Checkpoints
+! tail -5 .workflow/checkpoints.log 2>/dev/null | grep -v "^#" || echo "No checkpoints"
+
+## Handoff Summary
+! head -30 .workflow/handoff.md 2>/dev/null || echo "No handoff.md found"
+
+Summarize the workflow status concisely.

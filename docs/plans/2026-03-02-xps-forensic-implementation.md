@@ -302,7 +302,7 @@ project:
 device: "auto"  # auto-detect GPU
 
 data:
-  root: "./data"
+  root: "/media/lab2208/ssd/datasets"
   partialspoof:
     path: "${data.root}/PartialSpoof"
     sample_rate: 16000
@@ -1441,7 +1441,7 @@ git commit -m "feat: add HQ-MPSD and LlamaPartialSpoof dataset loaders"
 
 set -euo pipefail
 
-DATA_DIR="${1:-./data}"
+DATA_DIR="${1:-/media/lab2208/ssd/datasets}"
 mkdir -p "$DATA_DIR"
 
 echo "=== XPS-Forensic Dataset Download ==="

@@ -1,22 +1,33 @@
-"""Split Conformal Prediction with Adaptive Prediction Sets (SCP + APS).
+"""Split Conformal Prediction (Mondrian/class-conditional) for Stage 1.
 
-Stage 1 of CPSL: utterance-level conformal classification.
+This module implements class-conditional ("Mondrian") split conformal
+prediction for utterance-level ternary classification with labels in
+{real, partially_fake, fully_fake}. Given a single nonconformity score
+per utterance s(x), it computes class-conditional quantiles on a
+calibration set and produces prediction sets C(x) satisfying the
+marginal coverage guarantee:
 
-Given a nonconformity score s(x) and a ternary label y in {real,
-partially_fake, fully_fake}, computes class-conditional conformal
-quantiles on a calibration set and produces prediction sets C(x)
-satisfying:
+    P(Y in C(X)) >= 1 - alpha.
 
-    P(Y in C(X)) >= 1 - alpha
+Notes
+-----
+- This is NOT Adaptive Prediction Sets (APS) of Romano, Sesia, Candès
+  (NeurIPS 2020), which constructs adaptive sets from per-class scores.
+  We instead apply standard split conformal with class-conditional
+  thresholds (Mondrian CP). See Angelopoulos & Bates (2023) for a
+  tutorial on conformal prediction and Mondrian conditioning.
 
-Key design decision: conformal prediction is applied at the utterance
-level ONLY. Frame-level CP would violate the exchangeability assumption
-due to temporal autocorrelation in audio signals.
+- Conformal prediction is applied at the utterance level ONLY. Frame-level
+  CP would violate the exchangeability assumption due to temporal
+  autocorrelation in audio. Stage 2 handles localization via CRC.
 
-Reference
----------
-Romano, Sesia, Candes. "Classification with Valid and Adaptive Coverage",
-NeurIPS 2020.
+References
+----------
+- Angelopoulos, Bates. "A Gentle Introduction to Conformal Prediction and
+  Distribution-Free Uncertainty Quantification", 2023.
+  https://arxiv.org/abs/2302.08112
+- Romano, Sesia, Candès. "Classification with Valid and Adaptive Coverage",
+  NeurIPS 2020. https://arxiv.org/abs/2009.14193
 """
 from __future__ import annotations
 
@@ -27,7 +38,7 @@ import numpy as np
 
 @dataclass
 class SCPAPS:
-    """Split Conformal Prediction with Adaptive Prediction Sets.
+    """Split Conformal Prediction (Mondrian/class-conditional).
 
     Parameters
     ----------
@@ -43,6 +54,7 @@ class SCPAPS:
     )
     _quantiles: dict[int, float] = field(default_factory=dict, repr=False)
     _class_conditional: bool = True
+    enforce_contiguity: bool = True
 
     @property
     def n_classes(self) -> int:
@@ -127,6 +139,11 @@ class SCPAPS:
             if not ps:
                 best_class = max(self._quantiles, key=self._quantiles.get)
                 ps.add(best_class)
+            # Ordinal contiguity constraint for classes [0(real),1(partial),2(full)].
+            # If {0,2} are both present but 1 is not, add 1. This enlarges sets
+            # and cannot reduce marginal coverage.
+            if self.enforce_contiguity and 0 in ps and 2 in ps and 1 not in ps:
+                ps.add(1)
             prediction_sets.append(ps)
         return prediction_sets
 

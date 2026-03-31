@@ -1,0 +1,35 @@
+---
+description: "UWS help - list all available commands"
+---
+
+# UWS - Universal Workflow System
+
+Show the user the available UWS commands:
+
+## Core Commands
+| Command | Description |
+|---------|-------------|
+| `/uws` | This help menu |
+| `/uws-status` | Show current workflow state (phase, checkpoint, activity) |
+| `/uws-checkpoint "msg"` | Create a named checkpoint to save progress |
+| `/uws-recover` | Full context recovery after a session break |
+| `/uws-handoff` | Prepare handoff notes before ending a session |
+
+## Workflow Commands
+| Command | Description |
+|---------|-------------|
+| `/uws-sdlc` | Manage SDLC phases (requirements -> deployment) |
+| `/uws-research` | Manage research phases (hypothesis -> publication) |
+
+## Session Workflow
+1. **Start**: Context loads automatically when Claude Code opens
+2. **During**: Use `/uws-checkpoint "description"` at milestones
+3. **End**: Run `/uws-handoff` to save context for next session
+4. **Resume**: Run `/uws-recover` if context seems stale
+
+## State Files
+- `.workflow/state.yaml` - Machine-readable workflow state
+- `.workflow/handoff.md` - Human-readable context (priority actions, blockers)
+- `.workflow/checkpoints.log` - Checkpoint history
+
+Present this information clearly to the user.

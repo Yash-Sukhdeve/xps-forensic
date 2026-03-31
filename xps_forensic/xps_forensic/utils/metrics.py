@@ -239,3 +239,122 @@ def compute_tIoU(
         return 1.0
 
     return float(intersection / union)
+
+
+# ── Mixed-resolution helpers ─────────────────────────────────────────────---
+
+def _pool_scores_to_windows(
+    frame_scores: np.ndarray,
+    score_frame_shift_ms: float,
+    window_ms: float,
+    agg: str = "mean",
+) -> np.ndarray:
+    """Aggregate scores into non-overlapping windows of ``window_ms``.
+
+    Args:
+        frame_scores: Shape (n_frames,).
+        score_frame_shift_ms: Frame shift of scores in ms (e.g., 20).
+        window_ms: Target window size in ms (e.g., 160).
+        agg: Aggregation for scores ("mean" is standard).
+
+    Returns:
+        Array of windowed scores.
+    """
+    frame_scores = np.asarray(frame_scores, dtype=float)
+    frames_per_window = max(1, int(round(window_ms / score_frame_shift_ms)))
+    n = len(frame_scores)
+    n_windows = n // frames_per_window
+    if n_windows == 0:
+        return frame_scores.copy()
+    trunc = frame_scores[: n_windows * frames_per_window].reshape(
+        n_windows, frames_per_window
+    )
+    if agg == "mean":
+        return trunc.mean(axis=1)
+    raise ValueError(f"Unknown agg: {agg}")
+
+
+def _pool_labels_to_windows(
+    frame_labels: np.ndarray,
+    label_frame_shift_ms: float,
+    window_ms: float,
+    rule: str = "majority",
+) -> np.ndarray:
+    """Aggregate binary labels into non-overlapping ``window_ms`` windows.
+
+    Args:
+        frame_labels: Binary labels, shape (n_frames,).
+        label_frame_shift_ms: Label frame shift in ms (e.g., 10).
+        window_ms: Target window size in ms.
+        rule: Aggregation rule for labels ("majority" standard in PartialSpoof).
+
+    Returns:
+        Binary window labels.
+    """
+    frame_labels = np.asarray(frame_labels, dtype=int)
+    frames_per_window = max(1, int(round(window_ms / label_frame_shift_ms)))
+    n = len(frame_labels)
+    n_windows = n // frames_per_window
+    if n_windows == 0:
+        return frame_labels.copy()
+    trunc = frame_labels[: n_windows * frames_per_window].reshape(
+        n_windows, frames_per_window
+    )
+    if rule == "majority":
+        return (trunc.mean(axis=1) >= 0.5).astype(int)
+    elif rule == "any":
+        return (trunc.sum(axis=1) > 0).astype(int)
+    else:
+        raise ValueError(f"Unknown rule: {rule}")
+
+
+def compute_segment_eer_mixed(
+    frame_scores: np.ndarray,
+    score_frame_shift_ms: float,
+    frame_labels: np.ndarray,
+    label_frame_shift_ms: float,
+    resolution_ms: float,
+) -> tuple[float, float]:
+    """Segment-level EER when scores and labels use different frame shifts.
+
+    Pools scores by mean and labels by majority into windows of
+    ``resolution_ms``, then computes EER on the pooled series.
+
+    This aligns with PartialSpoof-style evaluation that reports metrics
+    at multiple window sizes (e.g., 20/40/80/160/320/640 ms).
+
+    Returns:
+        (eer, threshold) as in ``compute_eer``.
+    """
+    seg_scores = _pool_scores_to_windows(
+        frame_scores, score_frame_shift_ms, resolution_ms, agg="mean"
+    )
+    seg_labels = _pool_labels_to_windows(
+        frame_labels, label_frame_shift_ms, resolution_ms, rule="majority"
+    )
+
+    # Truncate to common length (can differ by <= 1 due to rounding)
+    m = min(len(seg_scores), len(seg_labels))
+    return compute_eer(seg_scores[:m], seg_labels[:m])
+
+
+def upsample_binary_predictions_to_label_grid(
+    pred_binary: np.ndarray,
+    pred_frame_shift_ms: float,
+    label_frame_shift_ms: float,
+) -> np.ndarray:
+    """Upsample binary predictions to the label frame grid by repetition.
+
+    Example: 20 ms predictions to 10 ms labels → repeat each frame twice.
+    If the ratio is not an integer, uses nearest repeat count rounding.
+    Truncates to align edges without padding.
+    """
+    ratio = pred_frame_shift_ms / label_frame_shift_ms
+    if ratio <= 0:
+        raise ValueError("Frame shift ratio must be positive")
+    r = int(round(ratio))
+    if abs(ratio - r) > 1e-6:
+        # Fallback: approximate by nearest integer repeat
+        r = max(1, r)
+    up = np.repeat(pred_binary.astype(int), r)
+    return up

@@ -1,0 +1,75 @@
+{
+  "agents": {
+    "code-quality-agent": {
+      "agentId": "code-quality-agent",
+      "agentType": "code-reviewer",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "sonnet"
+      },
+      "createdAt": "2026-03-30T02:17:41.546Z",
+      "domain": "code-analysis",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
+    },
+    "research-status-agent": {
+      "agentId": "research-status-agent",
+      "agentType": "researcher",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "sonnet"
+      },
+      "createdAt": "2026-03-30T02:17:41.572Z",
+      "domain": "research",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
+    },
+    "next-steps-agent": {
+      "agentId": "next-steps-agent",
+      "agentType": "planner",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "sonnet"
+      },
+      "createdAt": "2026-03-30T02:17:41.591Z",
+      "domain": "planning",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
+    },
+    "lit-review-2024-2026": {
+      "agentId": "lit-review-2024-2026",
+      "agentType": "researcher",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "sonnet"
+      },
+      "createdAt": "2026-03-30T02:35:51.327Z",
+      "domain": "research",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
+    },
+    "competitor-tracker": {
+      "agentId": "competitor-tracker",
+      "agentType": "researcher",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "sonnet"
+      },
+      "createdAt": "2026-03-30T02:35:52.851Z",
+      "domain": "research",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
+    }
+  },
+  "version": "3.0.0"
+}
