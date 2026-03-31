@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./.uws/hooks/*:*)",
+      "Bash(./.uws/scripts/*:*)",
+      "Bash(cat .workflow/*:*)",
+      "Bash(grep:*)",
+      "Bash(tail:*)",
+      "Bash(head:*)",
+      "Bash(date:*)",
+      "Bash(sed:*)",
+      "Bash(git:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.uws/hooks/session_start.sh"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.uws/hooks/pre_compact.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

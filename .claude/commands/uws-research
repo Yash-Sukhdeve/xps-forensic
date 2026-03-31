@@ -1,0 +1,22 @@
+---
+description: "Manage Research workflow phases"
+argument-hint: "<status|start|next|goto|reject|reset> [details]"
+allowed-tools:
+  - "Bash(./.uws/scripts/research.sh:*)"
+---
+
+# UWS Research Management
+
+Manage the Research Methodology lifecycle (Scientific Method).
+
+**Phases**: hypothesis -> literature_review -> experiment_design -> data_collection -> analysis -> peer_review -> publication
+
+Run the appropriate command based on the user's request. If no argument given, show status.
+
+Arguments provided: $ARGUMENTS
+
+```bash
+./.uws/scripts/research.sh $ARGUMENTS
+```
+
+If $ARGUMENTS is empty, run `./.uws/scripts/research.sh status`.

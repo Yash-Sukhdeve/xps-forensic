@@ -1,9 +1,3 @@
-# UWS internal hooks (session-specific)
-.uws/
-
-# Claude Code project config
-.claude/
-
 # Python
 __pycache__/
 *.py[cod]
@@ -26,7 +20,31 @@ venv/
 # pytest
 .pytest_cache/
 
-# Data and results (large files)
+# Large files - checkpoints, pretrained models, data
+*.ckpt
+*.pth
+*.pt
+*.tgz
+*.tar.gz
+*.npy
+*.zip
+
+# External model repos (large, cloned separately)
+xps_forensic/external/BAM/
+xps_forensic/external/SAL/
+xps_forensic/external/CFPRF/
+xps_forensic/external/MRM/
+
+# Localization legacy checkpoints and large data
+Localization/baselines/repos/
+Localization/checkpoints/
+Localization/results/bam/checkpoints/
+
+# Data directories (large files, downloaded separately)
 xps_forensic/data/
 !xps_forensic/xps_forensic/data/
 xps_forensic/results/
+
+# PPTX files (binary, managed outside git)
+*.pptx
+Localization/

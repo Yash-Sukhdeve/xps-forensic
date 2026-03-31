@@ -1,0 +1,32 @@
+---
+description: "Recover full UWS context after session break"
+allowed-tools:
+  - "Bash(cat:*)"
+  - "Bash(grep:*)"
+  - "Bash(tail:*)"
+  - "Bash(head:*)"
+  - "Bash(git:*)"
+  - "Bash(ls:*)"
+---
+
+# UWS Context Recovery
+
+Recover full workflow context after a session break.
+
+## State File
+! cat .workflow/state.yaml 2>/dev/null || echo "ERROR: No state.yaml"
+
+## Full Handoff Document
+! cat .workflow/handoff.md 2>/dev/null || echo "ERROR: No handoff.md"
+
+## Checkpoint History
+! cat .workflow/checkpoints.log 2>/dev/null | grep -v "^#" || echo "No checkpoints"
+
+## Version Control
+! if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then echo "Branch: $(git branch --show-current 2>/dev/null)"; git status --short 2>/dev/null | head -20; else echo "Git not available or not a git repository"; fi
+
+Based on this context:
+1. Summarize where we left off
+2. List the priority next actions
+3. Note any blockers or issues
+4. Ask if I should continue with the next action

@@ -1,0 +1,681 @@
+\documentclass[journal]{IEEEtran}
+
+% ── Packages ──
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{pifont}
+\usepackage{hyperref}
+
+\newcommand{\cmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=green!50!black,
+  urlcolor=blue!60!black
+}
+
+\begin{document}
+
+\markboth{IEEE/ACM TRANSACTIONS ON AUDIO, SPEECH, AND LANGUAGE PROCESSING}%
+{Sukhdeve \MakeLowercase{\textit{et al.}}: Partial Deepfake Speech Detection and Temporal Localization: A Survey}
+
+\title{Partial Deepfake Speech Detection and Temporal Localization: A Survey}
+
+\author{Yash~Sukhdeve, Ajan Ahmed, Masudul~H.~Imtiaz,~\IEEEmembership{Member,~IEEE}%
+\thanks{This work was supported by the Center for Identification Technology Research (CITeR), a National Science Foundation (NSF) Industry/University Cooperative Research Center (I/UCRC).}%
+\thanks{Y. Sukhdeve, A. Ahmed, and M. H. Imtiaz are with the Department of Electrical and Computer Engineering, Clarkson University, Potsdam, NY 13699 USA (e-mail: sukhdeya@clarkson.edu).}}
+
+\maketitle
+
+% ═══════════════════════════════════════════════════════
+% ABSTRACT
+% ═══════════════════════════════════════════════════════
+\begin{abstract}
+Audio deepfake detection has advanced rapidly for utterance-level binary classification, yet partial deepfakes (utterances in which only selected segments are manipulated) pose different challenges that existing surveys have not addressed in depth. We are not aware of a prior survey that jointly addresses partial deepfake dataset taxonomy, temporal localization architectures, cross-dataset generalization, evaluation metric fragmentation, and neural speech editing---the five dimensions scored in Table~\ref{tab:survey_positioning}. We compare ten partial deepfake datasets spanning concatenation-based, word-level replacement, and neural speech editing construction methods, and organize over fifteen detection architectures from utterance-level classifiers through frame-level localizers to weakly supervised temporal forgery localization systems. Aggregating cross-dataset evidence from five independent benchmarks shows that XLS-R-based systems achieve the lowest observed average EER among the architectures compared, though coverage is incomplete and the advantage may reflect large-scale SSL pre-training rather than XLS-R specifically. Construction methodology mismatch is associated with bidirectional EER degradation, from single-digit in-domain EER to above 23\% cross-paradigm EER. We formally define eight distinct evaluation metric paradigms, including three mutually incompatible Intersection-over-Union formulations, and quantify evaluation protocol fragmentation through Jaccard overlap analysis, showing that 80\% of dataset pairs share zero common metrics. We present standardization recommendations and a maturity-organized roadmap of open challenges.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Audio deepfake detection, partial spoofing, temporal localization, cross-dataset generalization, evaluation metrics, speech anti-spoofing.
+\end{IEEEkeywords}
+
+% ═══════════════════════════════════════════════════════
+% 1. INTRODUCTION
+% ═══════════════════════════════════════════════════════
+\section{Introduction}
+\label{sec:intro}
+
+Neural speech synthesis and voice conversion now achieve high perceptual quality on several benchmarks~\cite{tan2021ttssurvey}. NaturalSpeech~3~\cite{ju2024naturalspeech3} reports quality approaching that of human recordings under its evaluation setting, though a perceptual gap persists across conditions. Neural audio codecs have narrowed this gap further; EnCodec~\cite{defossez2023encodec} reports MUltiple Stimuli with Hidden Reference and Anchor (MUSHRA) scores within five points of reference speech at 12\,kbps, although a measurable difference remains at lower bitrates. These advances lower the barrier to fabricating convincing audio evidence and enabling voice-based fraud.
+
+The detection community has responded through benchmark evaluations and shared tasks. The ASVspoof challenge series~\cite{wang2020asvspoof2019,yamagishi2021asvspoof2021,wang2024asvspoof5} has driven progress from handcrafted features to self-supervised learning (SSL) representations. In-domain performance has reached sub-1\% EER levels; for example, AASIST reports 0.83\% Equal Error Rate (EER) on ASVspoof~2019~LA~\cite{jung2022aasist}, and wav2vec~2.0-based systems achieve 0.82\% EER on ASVspoof~2021~LA~\cite{tak2022ssl}. The Audio Deep Synthesis Detection (ADD) challenges~\cite{yi2022add,yi2023add} have further expanded the scope to more diverse attack conditions.
+
+Yet these benchmarks predominantly address a simplified threat model. ASVspoof~2019~LA and 2021~LA define the task as utterance-level binary classification of fully synthetic speech~\cite{wang2020asvspoof2019,yamagishi2021asvspoof2021}, and ADD~2022 Track~1 similarly targets fully fake detection~\cite{yi2022add}---in all cases, each utterance is labeled entirely real or entirely fake. In practice, \emph{partial deepfakes}, in which an attacker modifies only selected segments of a genuine recording, pose a more difficult detection problem. An attacker might replace a single word in a politician's speech, or insert a phrase into a voice message to fabricate consent. These manipulations are harder to detect because the majority of the audio is genuine, and the system must identify transitions between authentic and manipulated regions.
+
+Neural speech editing technologies~\cite{peng2024voicecraft,wang2025ssrspeech,vyas2023audiobox} have increased the practical difficulty of detection. Unlike earlier concatenation-based methods that splice text-to-speech (TTS) and voice conversion (VC) generated segments using signal processing~\cite{zhang2023partialspoof}, neural editing models modify selected words in context~\cite{kassmann2024speechediting}, preserving prosody and acoustic environment. As shown in~\cite{zhang2025partialedit}, detectors trained on concatenation-based partial deepfakes fail on neurally edited speech, with substantial cross-paradigm EER degradation (Section~\ref{sec:generalization}).
+
+Several surveys address deepfake audio detection broadly, each contributing complementary perspectives.
+
+Wu et al.~\cite{wu2015spoofing} established the foundational taxonomy of spoofing attacks for speaker verification. Li et al.~\cite{li2025survey} analyze over 200 detection systems across the full pipeline (features, classifiers, optimization, generalization) and include a dedicated section on partial deepfake detection covering frame-level, multi-task, and boundary-based approaches. Yi et al.~\cite{yi2023survey} introduce a formal five-category taxonomy of deepfake audio types and uniquely combine survey coverage with experimental benchmarking across ASVspoof~2021, ADD~2023, and In-the-Wild datasets. Pham et al.~\cite{pham2025survey} complement their survey with original experimental validation, systematically testing hypotheses about data augmentation, feature extraction, and loss functions across 13 benchmark datasets. Zhang et al.~\cite{zhang2025audiosurvey} review six neural TTS and VC architectures (WaveNet, Tacotron~2, FastSpeech~2, CycleGAN-VC, AutoVC, FreeVC) as context for detection and extend the survey scope to address explainability and fairness. Almutairi and Elgibreen~\cite{almutairi2022review} survey detection methods with emphasis on future directions.
+
+However, none provides a unified treatment that combines systematic dataset comparison, cross-dataset generalization analysis, metric fragmentation quantification, and evaluation of neural editing attacks (Table~\ref{tab:survey_positioning}). Li et al.~\cite{li2025survey} come closest with partial deepfake coverage spanning dataset cataloging and detection methods, but do not address temporal localization, metric fragmentation, or neural editing paradigms. The two-page workshop abstract by Alali and Theodorakopoulos~\cite{alali2024deepfakesurvey} at ACM IWSPA also addresses partial deepfakes but does not include systematic dataset comparison or cross-dataset generalization analysis.
+
+
+
+\begin{table*}[t]
+\centering
+\caption{Survey positioning matrix. \cmark\ indicates dedicated coverage, partial = some but not systematic coverage, \xmark\ indicates absent or minimal coverage.}
+\label{tab:survey_positioning}
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Survey} & \textbf{Partial DF} & \textbf{Temporal} & \textbf{Cross-dataset} & \textbf{Metric} & \textbf{Neural} \\
+ & \textbf{datasets} & \textbf{localization} & \textbf{generalization} & \textbf{fragmentation} & \textbf{editing} \\
+\midrule
+\cite{wu2015spoofing} (CST, 2015) & \xmark & \xmark & \xmark & \xmark & \xmark \\
+\cite{almutairi2022review} (Algorithms, 2022) & \xmark & \xmark & \xmark & \xmark & \xmark \\
+\cite{li2025survey} (ACM CSUR, 2025) & partial & partial & \xmark & \xmark & \xmark \\
+\cite{yi2023survey} (arXiv, 2023) & partial & \xmark & \xmark & \xmark & \xmark \\
+\cite{pham2025survey} (CS Review, 2025) & \xmark & \xmark & partial & \xmark & \xmark \\
+\cite{zhang2025audiosurvey} (Sensors, 2025) & \xmark & \xmark & \xmark & \xmark & partial \\
+\textbf{This survey} & \cmark & \cmark & \cmark & \cmark & \cmark \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Table~\ref{tab:survey_positioning} positions our survey against prior work across five dimensions specific to partial deepfakes. To fill these gaps, we make the following contributions:
+\begin{enumerate}
+\item A unified taxonomy and comparison of ten partial deepfake speech datasets identified by our search, covering concatenation-based, word-level replacement, and neural speech editing construction methodologies, with analysis of how construction method acts as a confound in cross-dataset evaluation.
+\item A survey of over fifteen detection architectures organized by granularity, from utterance-level classifiers through frame-level localizers to weakly supervised temporal forgery localization systems, including audio-only weakly supervised methods (LOCO~\cite{wu2025loco}).
+\item To our knowledge, the first aggregated cross-dataset generalization matrix for partial deepfake detection, drawing results from five independent publications across five datasets and four detection architectures. Li et al.~\cite{li2025survey} include partial cross-dataset results but do not provide a unified matrix across multiple source studies. This aggregation suggests that XLS-R-based systems~\cite{zhang2024xlrsls,wu2024cfprf,wu2025loco} achieve low average EER across multiple benchmarks while still failing across construction paradigms, and that construction methodology mismatch is consistently associated with generalization failure across the studies surveyed.
+\item Formal mathematical definitions and step-by-step calculation procedures for all eight evaluation metric paradigms used across the ten datasets, including a side-by-side comparison of three mutually incompatible IoU formulations and documentation of a likely typographical error in the HAD metric equations~\cite{yi2021had}.
+\item A quantification of evaluation protocol fragmentation through pairwise Jaccard overlap of metric sets, showing that 80\% of dataset pairs share zero common metrics (mean Jaccard index 0.11). We are not aware of a prior quantification of this overlap in the literature.
+\end{enumerate}
+
+\textbf{Scope and methodology.} We conducted a scoping review of partial deepfake speech detection and temporal localization between January and March~2026. The search covered IEEE Xplore, ACM Digital Library, arXiv, ISCA Archive, and Google Scholar using five queries: ``partial deepfake speech,'' ``partially spoofed audio,'' ``temporal forgery localization,'' ``audio tampering localization,'' and ``partial spoof detection.'' The initial keyword search returned approximately 320 unique records after deduplication. We supplemented keyword search with backward and forward citation chaining from key papers (PartialSpoof~\cite{zhang2023partialspoof}, LAV-DF~\cite{cai2022lavdf}, HAD~\cite{yi2021had}) and from the reference lists of the six surveys in Table~\ref{tab:survey_positioning}, adding 45 further candidates. Inclusion criteria were: (1)~the work introduces a dataset with frame-level or segment-level annotations for partially manipulated speech, or (2)~the work proposes a detection or localization method evaluated on such a dataset. Exclusion criteria: fully synthetic deepfake detection without temporal localization, image/video-only forgery detection, and works not available by March~2026. After title/abstract screening (365 candidates $\rightarrow$ 87 full-text reviews) and full-text assessment, this process yielded ten datasets and over fifteen architectures that met our inclusion criteria. We do not claim exhaustive coverage of all concurrent preprints; datasets or methods released after the cutoff, or indexed only in non-English repositories, may not be captured.
+
+The remainder of this paper is organized as follows. Section~\ref{sec:background} establishes background and taxonomy. Section~\ref{sec:datasets} compares ten partial deepfake datasets. Section~\ref{sec:detection} surveys detection architectures. Section~\ref{sec:localization} covers temporal localization methods. Section~\ref{sec:generalization} presents cross-dataset generalization analysis. Section~\ref{sec:metrics} defines evaluation metrics and quantifies protocol fragmentation. Section~\ref{sec:challenges} identifies open challenges, and Section~\ref{sec:conclusion} concludes.
+
+
+% ═══════════════════════════════════════════════════════
+% 2. BACKGROUND & TAXONOMY
+% ═══════════════════════════════════════════════════════
+\section{Background and Taxonomy}
+\label{sec:background}
+
+This section establishes the terminology and taxonomy used throughout this survey. Three community-specific vocabularies overlap in the literature: the ASVspoof tradition uses \emph{spoofing} for attacks against speaker verification~\cite{wu2015spoofing,wang2020asvspoof2019}; classical audio forensics uses \emph{tampering} or \emph{splicing} for post-recording signal modification; and the broader machine learning community uses \emph{deepfake} for neural-network-generated speech~\cite{almutairi2022review,muller2022does}. This paper adopts \emph{partial deepfake} as the umbrella term throughout. The detection problem is invariant across all three traditions: identifying which temporal segments within an utterance have been manipulated. What varies is the generation mechanism---signal-processing concatenation versus neural in-context editing---which is the primary axis of the taxonomy that follows. Audio deepfakes are organized along two axes that shape every subsequent design decision: \emph{extent of manipulation} (full vs.\ partial) and \emph{generation methodology} (Fig.~\ref{fig:taxonomy}).
+
+\textbf{Fully fake utterances} are entirely generated by synthesis or conversion systems. Text-to-speech (TTS) systems~\cite{tan2021ttssurvey} produce speech from text, while voice conversion (VC) systems transform source speech to sound like a target speaker, often using neural vocoders such as HiFi-GAN~\cite{kong2020hifi}. Replay attacks present previously recorded speech through playback. These form the core of the ASVspoof challenge series~\cite{wang2020asvspoof2019}.
+
+\textbf{Partially fake utterances} contain a mixture of genuine and manipulated segments. Three construction paradigms have emerged chronologically:
+
+\emph{Concatenation-based partial deepfakes} splice TTS/VC-generated segments into genuine utterances using signal processing (cross-correlation alignment, overlap-add smoothing). PartialSpoof~\cite{zhang2023partialspoof} is the foundational dataset, replacing random segments from VCTK with ASVspoof~2019 attack outputs.
+
+\emph{Word-level replacement partial deepfakes} target specific linguistic content. HAD~\cite{yi2021had} replaces individual Chinese words, LlamaPartialSpoof~\cite{luong2025llamapartialspoof} uses large language models (LLMs) for contextually appropriate substitutions, and HQ-MPSD~\cite{li2025hqmpsd} applies root mean square (RMS)-based loudness alignment to minimize boundary artifacts.
+
+\emph{Neural speech editing partial deepfakes} use in-context generation models. PartialEdit~\cite{zhang2025partialedit} employs four neural editing models (VoiceCraft~\cite{peng2024voicecraft}, SSR-Speech~\cite{wang2025ssrspeech}, Audiobox-Speech, and Audiobox~\cite{vyas2023audiobox}) to produce edits perceptually close to genuine speech (Mean Opinion Score [MOS] $\approx$ 3.80 to 3.90 vs.\ 3.88 for genuine VCTK).
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig1_taxonomy.png}
+  \caption{Hierarchical taxonomy of audio deepfake types. Fully fake attacks replace the entire utterance. Partially fake attacks modify only selected segments through concatenation, word-level replacement, or neural speech editing. The lower panel shows four detection granularity levels.}
+  \label{fig:taxonomy}
+\end{figure*}
+
+\smallskip
+\noindent Given the mixture of real and fake content within a single utterance, detection systems must choose how finely to analyze the signal. Four levels of granularity have been defined, a hierarchy established by the PartialSpoof evaluation framework~\cite{zhang2023partialspoof} and refined by subsequent work~\cite{zhong2024bam,wu2024cfprf,cai2024ifbdn}:
+
+\emph{Utterance-level detection} produces a single binary decision for the entire recording, compatible with standard EER evaluation.
+
+\emph{Segment-level detection} classifies contiguous temporal segments as real or fake, corresponding to the segment EER used in PartialSpoof~\cite{zhang2023partialspoof}.
+
+\emph{Frame-level detection} classifies individual short-time analysis windows, termed frames (typically 20\,ms duration), as real or fake, used by PartialEdit~\cite{zhang2025partialedit} and BAM~\cite{zhong2024bam}.
+
+\emph{Boundary detection} identifies precise temporal locations of real-to-fake transitions. Boundary F1 at 20\,ms tolerance is reported by PartialSpoof~\cite{zhang2023partialspoof}.
+
+\subsection{Problem Formulation}
+
+Let $\mathbf{x} = [x_1, x_2, \ldots, x_T]$ denote a speech utterance of $T$ frames, each of duration $\Delta t$ (typically 20\,ms). The detection and localization tasks are defined at four granularity levels:
+
+\textbf{Utterance-level detection:} Produce a single binary label $\hat{y} \in \{0, 1\}$ indicating whether any frame in $\mathbf{x}$ has been manipulated.
+
+\textbf{Frame-level localization:} Produce a label sequence $\hat{\mathbf{y}} = [\hat{y}_1, \ldots, \hat{y}_T]$ where $\hat{y}_t \in \{0, 1\}$ indicates manipulation at frame $t$.
+
+\textbf{Temporal segment proposal:} Produce a set of segments $\{(s_i, e_i, c_i)\}_{i=1}^{N}$ where $s_i, e_i$ are start and end times and $c_i \in [0,1]$ is a confidence score.
+
+\textbf{Boundary detection:} Produce a set of transition points $\{b_j\}_{j=1}^{M}$ marking real-to-fake or fake-to-real boundaries.
+
+This notation is used consistently in Sections~\ref{sec:detection}--\ref{sec:metrics}.
+
+\begin{table}[h]
+\centering
+\caption{Summary of notation used in this paper.}
+\label{tab:notation}
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Symbol} & \textbf{Description} \\
+\midrule
+$\mathbf{x}$ & Input utterance \\
+$T$ & Number of frames \\
+$\Delta t$ & Frame duration (e.g., 20\,ms) \\
+$y_i$ & Ground truth label for segment/frame $i$ \\
+$s_i$ & Prediction score for segment/frame $i$ \\
+$\tau$ & Decision threshold \\
+$\text{FAR}(\tau)$ & False acceptance rate at threshold $\tau$ \\
+$\text{FRR}(\tau)$ & False rejection rate at threshold $\tau$ \\
+$r$ & Temporal resolution (seconds) \\
+$\theta$ & IoU threshold \\
+$P, G$ & Predicted / ground truth segments \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ═══════════════════════════════════════════════════════
+% 3. DATASETS
+% ═══════════════════════════════════════════════════════
+\section{Datasets for Partial Deepfake Detection}
+\label{sec:datasets}
+
+This section compares the ten datasets identified by our search (Section~\ref{sec:intro}) for partial deepfake detection and temporal localization. The field has evolved from signal-processing splicing in 2021 to LLM-guided neural editing in 2025, with each new dataset introducing more realistic attacks that expose weaknesses in detectors tuned to earlier paradigms. Table~\ref{tab:datasets} summarizes their key properties, and Table~\ref{tab:dataset_access} details annotation granularity, temporal resolution, public access status, and channel conditions.
+
+\begin{table*}[t]
+\centering
+\caption{Comparison of ten partial deepfake datasets. Constr.: concatenation~(C), word-level replacement~(W), neural editing~(E). Loc.: temporal boundary annotations provided. Mod.: audio-only~(A), audiovisual~(AV). Lang.: EN = English, ZH = Chinese, Multi = multilingual. Size: total utterances (bonafide + deepfake) in thousands, or videos (vid.), from primary sources~\cite{li2025hqmpsd,luong2025llamapartialspoof,zhang2025partialedit,cai2023lavdf_cviu,yi2023add,liu2025lensdf}.}
+\label{tab:datasets}
+\small
+\begin{tabular}{lccccccc}
+\toprule
+\textbf{Dataset} & \textbf{Year} & \textbf{Lang.} & \textbf{Constr.} & \textbf{Loc.} & \textbf{Mod.} & \textbf{Size} & \textbf{Source} \\
+\midrule
+PartialSpoof~\cite{zhang2023partialspoof} & 2021 & EN & C & \cmark & A & 121K & VCTK \\
+HAD~\cite{yi2021had} & 2021 & ZH & W & \cmark & A & 161K & AISHELL-3 \\
+LAV-DF~\cite{cai2022lavdf} & 2022 & EN & C (AV) & \cmark & AV & 136K vid. & Custom \\
+ADD 2023-PF~\cite{yi2023add} & 2023 & ZH & W & \cmark & A & 121K & Various \\
+Psynd~\cite{zhang2022localizing} & 2022 & EN & C & \cmark & A & 2.4K & Custom \\
+AV-Deepfake1M~\cite{cai2024avdeepfake1m} & 2024 & EN & C+W & \cmark & AV & ${\sim}$1M vid. & VoxCeleb2 \\
+LENS-DF~\cite{liu2025lensdf} & 2025 & EN & C & \cmark & A & 29K & ASVspoof 2019 LA \\
+LlamaPartialSpoof~\cite{luong2025llamapartialspoof} & 2025 & EN & W & \cmark & A & 76K & LibriTTS \\
+PartialEdit~\cite{zhang2025partialedit} & 2025 & EN & E & \cmark & A & 43K & VCTK \\
+HQ-MPSD~\cite{li2025hqmpsd} & 2025 & Multi & W & \cmark & A & 155K & MLS \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\caption{Dataset annotation and access properties. Ann.: annotation granularity---F = frame-level, S = segment-level, W = word-level, B = boundary. Res.: finest evaluation resolution. Access: P = publicly available via source corpus, R = request-based, C = challenge-only. Channel: Tel.\ = telephone, N = noise, Cd = codec (Cd$^*$ = eval split only). All access statuses are based on the source corpus licensing; individual dataset releases may impose additional restrictions.}
+\label{tab:dataset_access}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Dataset} & \textbf{Ann.} & \textbf{Res.} & \textbf{Access} & \textbf{Tel.} & \textbf{N} & \textbf{Cd} \\
+\midrule
+PartialSpoof~\cite{zhang2023partialspoof} & F+S+B & 20\,ms & P & \xmark & \xmark & \xmark \\
+HAD~\cite{yi2021had}                      & W     & Word   & P & \xmark & \xmark & \xmark \\
+LAV-DF~\cite{cai2022lavdf}               & S     & 40\,ms & P & \xmark & \xmark & \xmark \\
+ADD 2023-PF~\cite{yi2023add}             & W     & Word   & C & \xmark & \xmark & \xmark \\
+Psynd~\cite{zhang2022localizing}          & F+B   & 5.75\,ms & P & \xmark & \xmark & \xmark \\
+AV-Deepfake1M~\cite{cai2024avdeepfake1m} & S     & Variable & R & \xmark & \xmark & \xmark \\
+LENS-DF~\cite{liu2025lensdf}             & F     & 40\,ms & P & \xmark & \xmark & \xmark \\
+LlamaPartialSpoof~\cite{luong2025llamapartialspoof} & W+F & 20\,ms & P & \xmark & \xmark & \xmark \\
+PartialEdit~\cite{zhang2025partialedit}  & F     & 20\,ms & P & \xmark & \xmark & Cd$^*$ \\
+HQ-MPSD~\cite{li2025hqmpsd}             & W     & 30\,ms & P & \xmark & \xmark & \xmark \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\textbf{PartialSpoof}~\cite{zhang2021initialinvestigation,zhang2023partialspoof} is among the earliest dedicated partial deepfake datasets, introduced alongside HAD at Interspeech 2021. Built from the VCTK corpus~\cite{veaux2016vctk}, it replaces random contiguous segments with synthetic speech from multiple ASVspoof~2019 LA attack systems (A01 to A06 for training, A07 to A19 for evaluation). The splicing pipeline generates ground truth automatically without manual annotation. The dataset supports the most extensive evaluation protocol among those surveyed: utterance-level EER, segment-level EER at six resolutions (20 to 640\,ms), range-based EER~\cite{zhang2023rangeeer}, and boundary F1 at 20\,ms tolerance~\cite{zhang2023partialspoof}.
+
+\textbf{Psynd}~\cite{zhang2022localizing} uses a single TTS system for controlled study of concatenation artifacts, evaluating with asymmetric 1D-IoU (a $2\times$ penalty for false positives at 5.75\,ms resolution, the finest among all ten datasets).
+
+\textbf{LENS-DF}~\cite{liu2025lensdf} builds on ASVspoof~2019~LA~\cite{wang2020asvspoof2019} and evaluates with discrete fixed-window AP@IoU at 40\,ms resolution and HTER (Half Total Error Rate), explicitly noting that its chunk-based IoU formulation differs from the continuous segment IoU used by LAV-DF~\cite{cai2022lavdf}, despite sharing the same metric names.
+
+While concatenation-based datasets test whether detectors can find splice boundaries, word-level replacement datasets raise the bar by targeting semantically meaningful content, making the manipulations both harder to detect and more dangerous in practice.
+
+\textbf{HAD} (Half-Truth Audio Detection,~\cite{yi2021had}) targets Chinese speech from AISHELL-3~\cite{shi2021aishell3}, replacing specific words identified via \texttt{jieba} segmentation and named entity recognition. Synthesis uses GST Tacotron~\cite{wang2018gst} with LPCNet vocoder~\cite{valin2019lpcnet}. The evaluation uses duration-based precision, recall, and F1 computed over temporal overlap in seconds.
+
+\textbf{ADD 2023-PF}~\cite{yi2023add} is the partial fake track of the second Audio Deepfake Detection challenge, presented at the IJCAI 2023 Workshop on Deepfake Audio Detection and Analysis (DADA). It targets Chinese speech with word-level replacement construction, where selected words are substituted with TTS-generated counterparts. The evaluation protocol uses sentence accuracy (whether the utterance-level real/fake label is correctly predicted) and duration-based F1 computed over temporal overlap, sharing these metrics with HAD.
+
+\textbf{LlamaPartialSpoof}~\cite{luong2025llamapartialspoof} extends the word-level approach by using Meta LLaMA-3-8B-Instruct~\cite{dubey2024llama3} to generate semantically modified text across ten prompt categories (five random surface modifications, five disinformation-style alterations), synthesized by six TTS systems (LJ~JETS, YourTTS, XTTS~V2, GPT-SoVITS, CosyVoice, ElevenLabs). Montreal Forced Aligner~\cite{mcauliffe2017mfa} provides word-level timestamps, and five crossfade functions (linear, quarter-sine, half-sine, logarithmic, inverted parabola) are applied at splice boundaries. The dataset comprises 76,228 utterances (10,573 bonafide, 33,461 fully fake, 32,194 partially fake).
+
+\textbf{HQ-MPSD}~\cite{li2025hqmpsd} is a multilingual dataset spanning eight languages, built on the Multilingual LibriSpeech corpus with RMS-based loudness alignment between bonafide and synthetic speech before splicing to minimize boundary artifacts. It reports utterance-level EER and area under the ROC curve (AUC).
+
+The most recent paradigm shifts the generation mechanism from external synthesis to in-context editing. Rather than generating a fake segment independently and concatenating it, neural speech editors re-synthesize selected regions conditioned on the surrounding context, preserving the speaker's voice, prosody, and acoustic environment. Although the resulting edited region may still be extracted and reinserted (introducing a stitching step), the generation itself is context-aware, producing subtler artifacts than concatenation-based methods.
+
+\textbf{PartialEdit}~\cite{zhang2025partialedit}\footnote{PartialEdit (You Zhang et al., Interspeech 2025) should not be confused with the PartialSpoof papers by Lin Zhang et al.~\cite{zhang2021initialinvestigation,zhang2023partialspoof}. Despite both appearing at Interspeech and sharing a ``Partial'' prefix, these are distinct research groups: You Zhang et al.\ (University of Rochester) introduced PartialEdit and use XLSR-SLS~\cite{zhang2024xlrsls} as their detection baseline, while Lin Zhang et al.\ (NII, Japan) introduced PartialSpoof and use LCNN-based countermeasures.} introduces neural editing-based partial deepfakes. Four neural editing models (VoiceCraft~\cite{peng2024voicecraft}, SSR-Speech~\cite{wang2025ssrspeech}, Audiobox-Speech, and Audiobox~\cite{vyas2023audiobox}) modify selected words through in-context generation. A post-processing step extracts only the edited region and pastes it back, producing PartialEdit (clean stitching) and PartialEdit-Codec (full codec processing). Detection uses utterance-level EER, and localization uses frame-level EER at 20\,ms, a variant unique to this dataset.
+
+The datasets above focus on audio alone, but real-world deepfakes often combine audio and visual manipulation. Two large-scale audiovisual datasets bring temporal localization into the multimodal setting.
+
+\textbf{LAV-DF}~\cite{cai2022lavdf,cai2023lavdf_cviu} contains 136,304 videos (36,431 real, 99,873 fake) with content-driven manipulations that alter sentiment polarity. Audio features are extracted at 40\,ms resolution (log spectrogram downsampled $4\times$). Evaluation uses continuous-segment AP@IoU at thresholds $\{0.5, 0.55, \ldots, 0.95\}$ and AR@$N$ for $N \in \{5, 10, 20, 30, 50\}$, following evaluation protocols established by ActivityNet~\cite{heilbron2015activitynet} and THUMOS~\cite{idrees2017thumos}. This dataset introduced BA-TFD~\cite{cai2022lavdf}, an early multimodal temporal forgery localization baseline.
+
+\textbf{AV-Deepfake1M}~\cite{cai2024avdeepfake1m} is a large-scale audiovisual dataset built from VoxCeleb2~\cite{chung2018voxceleb2} with LLM-driven manipulation pipelines, evaluating temporal localization with temporal action localization (TAL)-borrowed metrics (Average Precision at IoU threshold [AP@IoU], Average Recall at $N$ proposals [AR@N], mean Average Precision [mAP]) at IoU thresholds $\{0.1, 0.2, \ldots, 0.9\}$. The final challenge score $S = (\text{AP} + \text{AR})/2$.
+
+The diversity of construction methods described above is not simply a taxonomic issue: it creates a systematic challenge for detector development. Construction methodology introduces systematic confounds. Concatenation-based datasets create stitching artifacts at boundaries; word-level replacement produces prosodic discontinuities; and neural editing minimizes both through in-context generation. As a result, detectors trained on one construction paradigm can fail on another, with substantial cross-paradigm EER degradation~\cite{zhang2025partialedit} and some cross-dataset evaluations approaching random chance~\cite{li2025hqmpsd}. The full cross-dataset generalization analysis is presented in Section~\ref{sec:generalization}.
+
+
+% ═══════════════════════════════════════════════════════
+% 4. DETECTION ARCHITECTURES
+% ═══════════════════════════════════════════════════════
+\section{Detection Architectures}
+\label{sec:detection}
+
+With ten datasets now available, this section reviews the architectures developed to detect partial manipulations. The field has shifted considerably since 2021: early work repurposed utterance-level classifiers, but the need for temporal precision has driven the development of purpose-built localization architectures. We organize this progression along two axes: \emph{front-end} feature representation and \emph{back-end} decision architecture. Table~\ref{tab:architectures} summarizes the key systems.
+
+\begin{table*}[t]
+\centering
+\caption{Detection and localization architectures for partial deepfake speech, grouped by detection granularity. Results within each group use the same metric family; \textbf{cross-group comparisons are not meaningful}. ``---'' indicates the value was not reported in or verified from the primary source paper.}
+\label{tab:architectures}
+\small
+\begin{tabular}{llllll}
+\toprule
+\textbf{System} & \textbf{Front-end} & \textbf{Back-end} & \textbf{Primary metric} & \textbf{Datasets} & \textbf{Venue} \\
+\midrule
+\multicolumn{6}{l}{\textit{Utterance-level classification (metric: utterance EER\,\%)}} \\
+\midrule
+AASIST~\cite{jung2022aasist}       & Spectral   & Graph attention     & 0.83 (LA)  & ASVspoof, LPS         & ICASSP 2022 \\
+XLSR-SLS~\cite{zhang2024xlrsls}    & XLS-R~\cite{babu2022xlsr} 300M & SLS + multi-pool    & 2.55 (PS)  & SDF Arena, PE         & ACM MM 2024 \\
+Nes2Net~\cite{liu2025nes2net}      & SSL        & Nested Res2Net      & ---        & HQ-MPSD               & TIFS 2025 \\
+\midrule
+\multicolumn{6}{l}{\textit{Frame-level localization (metric: segment EER\,\% at stated resolution)}} \\
+\midrule
+MRM~\cite{zhang2023partialspoof}   & SSL        & gMLP, 6-res heads   & ---                  & PS             & TASLP 2023 \\
+BAM~\cite{zhong2024bam}            & WavLM~\cite{chen2022wavlm}-Large & Boundary attention  & 3.58 (PS, 160\,ms)  & PS, PE         & Interspeech 2024 \\
+IFBDN~\cite{cai2024ifbdn}          & wav2vec 2.0~\cite{baevski2020wav2vec2} & Dual boundary+detect & 0.6713$^\dag$ (ADD)  & ADD, PS        & CSL 2024 \\
+BFC-Net~\cite{zhou2025bfcnet}      & Spectral   & LSK-Res + cross-attn & 2.73 (PS, 20\,ms)  & PS, ADD        & Neurocomp. 2025 \\
+SAL~\cite{sal2026}                 & SSL        & SPL + CSM augment    & ---                 & PS, HAD, LPS   & arXiv 2026 \\
+TDAM~\cite{li2025tdam}             & SSL        & Temporal diff. attn  & 0.59 (PS, 20\,ms)  & PS, HAD        & SPL 2025 \\
+\midrule
+\multicolumn{6}{l}{\textit{Proposal-based localization (metric: mAP or segment EER at 20\,ms)}} \\
+\midrule
+CFPRF~\cite{wu2024cfprf}           & SSL        & FDN + PRN (2-stage)  & 7.61$^\ddagger$ (PS, 20\,ms)  & PS, HAD, LAV-DF & ACM MM 2024 \\
+UMMAFormer~\cite{zhang2023ummaformer} & TSN + BYOL-A & TFAA + PCA-FPN  & ---                 & LAV-DF, AV-1M  & ACM MM 2023 \\
+BA-TFD+~\cite{cai2023lavdf_cviu}   & 3D-CNN     & BMN/BSN++            & ---                 & LAV-DF         & CVIU 2023 \\
+\midrule
+\multicolumn{6}{l}{\textit{Weakly supervised localization (metric: frame EER\,\% with utterance-level training only)}} \\
+\midrule
+LOCO~\cite{wu2025loco}             & XLS-R~\cite{babu2022xlsr} + BERT & A2LC + PRS         & ---                 & HAD, LAV-DF, AV-1M & IJCAI 2025 \\
+\bottomrule
+\multicolumn{6}{l}{\footnotesize $^\dag$ADD score (higher = better). $^\ddagger$Reproduced by~\cite{luong2025metrics}. All other values are EER\,\% (lower = better).} \\
+\multicolumn{6}{l}{\footnotesize Dataset abbreviations: PS = PartialSpoof, PE = PartialEdit, LPS = LlamaPartialSpoof, AV-1M = AV-Deepfake1M,} \\
+\multicolumn{6}{l}{\footnotesize ADD = ADD~2023-PF, LA = ASVspoof~2019~LA, SDF Arena = Speech~DF~Arena.} \\
+\multicolumn{6}{l}{\footnotesize Table lists 13 primary systems; W-TDL, TDL, WBD, and MDP are discussed in Section~\ref{sec:localization} (17 total).}
+\end{tabular}
+\end{table*}
+
+\textbf{Self-supervised learning (SSL) representations} are the most common front-end in recent partial deepfake detection systems. Three families appear frequently:
+
+XLS-R~\cite{babu2022xlsr}, a multilingual wav2vec~2.0 model pre-trained on 436K hours across 128 languages, is the front-end for XLSR-SLS~\cite{zhang2024xlrsls} and CFPRF~\cite{wu2024cfprf}. WavLM~\cite{chen2022wavlm}, pre-trained with a denoising objective, is used by BAM~\cite{zhong2024bam}. IFBDN~\cite{cai2024ifbdn} uses wav2vec~2.0 features. HuBERT~\cite{hsu2021hubert} and wav2vec~2.0~\cite{baevski2020wav2vec2} appear across multiple ASVspoof~\cite{wang2020asvspoof2019,nautsch2021asv} and ADD challenge systems~\cite{yi2023add}. End-to-end approaches using RawNet2~\cite{tak2021rawnet2} and LCNN architectures~\cite{chen2020lcnn,lavrentyeva2019stc} have also been adapted, though they generally underperform SSL-based systems on cross-dataset evaluation~\cite{speechdfarena2025,ali2026spoofsuperb}.
+
+The sensitive layer selection (SLS) module~\cite{zhang2024xlrsls} learns weighted combinations across all transformer layers. Different layers capture low-level acoustic features (early layers) versus high-level linguistic representations (later layers), and the optimal combination varies across attack types.
+
+\textbf{Spectral features} remain relevant as lightweight alternatives. Log-power spectrograms, constant-Q transform (CQT), and linear frequency cepstral coefficient (LFCC) features serve as front-ends in AASIST~\cite{jung2022aasist} and BFC-Net~\cite{zhou2025bfcnet}, requiring less computation but generally underperforming on cross-dataset evaluation. End-to-end approaches processing raw waveforms~\cite{tak2021rawnet2} have also been explored but are less common for temporal localization.
+
+\textbf{AASIST}~\cite{jung2022aasist} integrates spectro-temporal information through graph attention on heterogeneous graphs. Adapted for partial deepfake detection in LlamaPartialSpoof~\cite{luong2025llamapartialspoof}, where it serves as the cross-dataset evaluation backbone.
+
+\textbf{XLSR-SLS}~\cite{zhang2024xlrsls} combines XLS-R with SLS and multi-pooling aggregation (average, weighted-sum, max). It achieves the best open-source average EER (13.84\%) on Speech~DF~Arena~\cite{speechdfarena2025} across 14 datasets, outperforming WavLM-based (28.74\%) and HuBERT-based (33.19\%) systems in that benchmark. It also serves as the primary detection baseline in PartialEdit~\cite{zhang2025partialedit}. XLS-R (the backbone) ranks first among 20 SSL models in Spoof-SUPERB~\cite{ali2026spoofsuperb} with 17.41\% mean EER. However, per-dataset variance is high (0.23\% to 33.95\% in Speech~DF~Arena), and cross-paradigm evaluation degrades to 23.72\% (Section~\ref{sec:generalization}).
+
+\textbf{Nes2Net}~\cite{liu2025nes2net} directly processes high-dimensional SSL features without dimensionality reduction using nested multi-scale residual connections. It achieves competitive in-domain results on HQ-MPSD~\cite{li2025hqmpsd}, but degrades to 57.47\% EER when trained on PartialSpoof and tested on HQ-MPSD, near random chance.
+
+\textbf{Multi-resolution model (MRM)}~\cite{zhang2023partialspoof} uses gMLP scoring modules with hierarchical down-sampling ($2\times$ per layer) across six resolutions (20 to 640\,ms), allowing simultaneous detection and localization from a single model.
+
+\textbf{BAM} (Boundary-Aware Attention,~\cite{zhong2024bam}) introduces boundary enhancement modules that assemble intra-frame and inter-frame features (frame differences) with boundary-frame cross-attention. Frame-level predictions operate at 20\,ms resolution on WavLM-Large features, but the reported segment-level EER of 3.58\% is computed after aggregation to 160\,ms segments on PartialSpoof.
+
+\textbf{IFBDN}~\cite{cai2024ifbdn} uses a dual boundary-plus-detection approach: one system identifies splice points, another classifies frames, with score-level fusion. It placed 1st in ADD~2023 Track~2 (ADD score: 0.6713).
+
+\textbf{BFC-Net}~\cite{zhou2025bfcnet} uses Large Selective Kernel Residual Blocks for spectral/temporal enhancement, Multi-level Feature Aggregation for boundary prediction, and Boundary-Frame Cross Attention integrating inter-frame differences with boundary features.
+
+\textbf{SAL}~\cite{sal2026} introduces Segment Positional Labeling (4-class position labels: Start/Middle/End/Full) and Cross-Segment Mixing augmentation, addressing over-reliance on boundary artifacts and improving cross-dataset generalization on LlamaPartialSpoof.
+
+\textbf{TDAM}~\cite{li2025tdam} uses temporal difference attention with dual-level hierarchical difference representations to identify unnatural temporal variations without requiring frame-level annotations, evaluated on PartialSpoof and HAD.
+
+A common thread across these six systems is the importance of boundary information: BAM, IFBDN, BFC-Net, and SAL all incorporate explicit boundary-aware mechanisms, suggesting that splice-point detection is complementary to frame-level classification rather than redundant with it. SSL front-ends (WavLM, wav2vec~2.0, XLS-R) appear in five of six systems, with spectral-only input limited to BFC-Net. No controlled ablation study has compared all six systems under matched conditions, leaving open the question of whether boundary-awareness or front-end choice contributes more to localization accuracy.
+
+\textbf{CFPRF}~\cite{wu2024cfprf} is a two-stage system: a Frame-level Detection Network (FDN) with Difference-Aware Feature Learning and Boundary-Aware Feature Enhancement, followed by a Proposal Refinement Network (PRN) with dual prediction heads. It reports mAP of 99.23\% on HAD, 93.01\% on LAV-DF, and 55.22\% on PartialSpoof, with utterance-level EER of 7.41\% on PartialSpoof and 0.08\% on HAD. At 20\,ms segment resolution, CFPRF achieves 7.61\% segment EER on PartialSpoof~\cite{luong2025metrics}.
+
+
+% ═══════════════════════════════════════════════════════
+% 5. TEMPORAL LOCALIZATION METHODS
+% ═══════════════════════════════════════════════════════
+\section{Temporal Localization Methods}
+\label{sec:localization}
+
+Temporal localization methods identify \emph{where} within an utterance manipulation has occurred and \emph{how long} it lasts, moving the problem from classification to localization. We organize approaches by supervision level, from fully supervised methods that require frame-level annotations to weakly supervised methods that learn from utterance-level labels alone.
+
+Fully supervised methods require frame-level or segment-level annotations. The architectures described in Section~\ref{sec:detection}---MRM~\cite{zhang2023partialspoof}, BAM~\cite{zhong2024bam}, IFBDN~\cite{cai2024ifbdn}, BFC-Net~\cite{zhou2025bfcnet}, SAL~\cite{sal2026}, and TDAM~\cite{li2025tdam}---all produce frame-level predictions and share boundary-aware design. The waveform boundary detection (WBD) approach~\cite{cai2023wbd} provides an earlier instantiation of this paradigm, reframing partial spoof detection as frame-level boundary labeling using Wav2Vec~2.0 features processed by a ResNet-1D encoder, Transformer, and BiLSTM sequence, achieving 6.58\% EER on the ADD2022 test set.
+
+W-TDL~\cite{dragar2024wtdl} processes fixed-length windows of 64 wav2vec2 feature vectors (1.28\,s each) at 20\,ms resolution, rebalancing the heavily skewed frame-level label distribution (3.7\% $\rightarrow$ 14.4\% fake frames) and achieving a competition score of 0.8262 on AV-Deepfake1M when combined with a visual EVA branch. TDL~\cite{xie2024tdl} uses embedding similarity to locate manipulated regions through contrastive separation in feature space. Across these methods, two design principles recur: boundary-aware processing (shared by MRM, BAM, IFBDN, WBD, and BFC-Net) and temporal difference features (used by BAM, BFC-Net, and TDL), indicating that transition-point detection is central to the fully supervised paradigm.
+
+Rather than classifying each frame independently, an alternative strategy borrows from temporal action localization (TAL) to first propose candidate manipulated segments and then refine them. CFPRF~\cite{wu2024cfprf} generates coarse proposals via a Boundary Matching Network-inspired architecture~\cite{lin2019bmn}, then refines boundaries through learned regression. ActionFormer-based approaches~\cite{zhang2022actionformer}, originally achieving 71.0\% mAP@0.5 on THUMOS14, have been adapted for AV-Deepfake1M, providing the architectural foundation for UMMAFormer~\cite{zhang2023ummaformer} and subsequent TFL methods.
+
+Frame-level annotations are expensive to create and error-prone, especially for neural edits where even human listeners struggle to identify exact boundaries (PartialEdit reports edited speech MOS close to genuine speech~\cite{zhang2025partialedit}; see Section~\ref{sec:background}). Weakly supervised temporal localization sidesteps this bottleneck by requiring only utterance-level labels during training, learning to localize without explicit boundary annotations.
+
+Since no purpose-built weakly supervised audio temporal forgery localization (ATFL) methods existed, initial approaches adapted weakly supervised TAL methods from the video domain (CoLA~\cite{zhang2021cola}, CASE~\cite{liu2023case}, and FuSTAL~\cite{feng2024fustal}), replacing visual features with SSL audio representations.
+
+LOCO~\cite{wu2025loco}, a purpose-built weakly supervised ATFL method, introduces Audio-Language Co-Learning (A2LC), inspired by audio-language alignment approaches in environmental sound~\cite{ouajdi2024envfake}, that aligns audio features with language semantics using forgery-aware prompts from utterance-level annotations and learnable tokens. A Progressive Refinement Strategy generates pseudo frame-level labels from first-stage predictions, then applies semantic contrastive learning to amplify real/fake distinction. The authors report that LOCO reduces frame-level EER by 3.91, 17.26, and 12.39 percentage points on HAD, LAV-DF, and AV-Deepfake1M, respectively, relative to the second-best weakly supervised method~\cite{wu2025loco}. Of note, fully supervised methods degrade under weak supervision. For example, FDN's EER increases from 0.08\% to 8.47\% on HAD when only utterance-level labels are used~\cite{wu2025loco}.
+
+
+
+While the preceding methods operate on audio alone, audiovisual datasets (LAV-DF, AV-Deepfake1M) have motivated multimodal localization architectures. BA-TFD~\cite{cai2022lavdf} introduced multimodal temporal forgery localization using 3D-CNN features guided by contrastive loss, boundary matching loss, and frame classification loss. BA-TFD+~\cite{cai2023lavdf_cviu} replaced the backbone with MViTv2~\cite{li2022mvitv2} and added multimodal boundary matching via BSN++~\cite{fan2021bsn}.
+
+UMMAFormer~\cite{zhang2023ummaformer} introduced Temporal Feature Abnormal Attention (TFAA), an encoder-decoder that detects anomalies by comparing original vs.\ reconstructed features, combined with a Parallel Cross-Attention Feature Pyramid Network for hierarchical multi-scale audio-visual fusion. Its audio branch alone provides strong baselines on HAD and LAV-DF.
+
+MDP~\cite{xu2025mdp} extends weakly supervised localization to the audiovisual setting through cross-modal attention with temporal property preservation, achieving performance competitive with fully supervised UMMAFormer at low IoU thresholds on AV-Deepfake1M.
+
+
+% ═══════════════════════════════════════════════════════
+% 6. CROSS-DATASET GENERALIZATION
+% ═══════════════════════════════════════════════════════
+\section{Cross-Dataset Generalization}
+\label{sec:generalization}
+
+Cross-dataset evaluation results aggregated from primary sources show a consistent pattern: detectors that achieve low EER in-domain degrade substantially when tested on a different dataset, raising concerns about deployment readiness.
+
+Fig.~\ref{fig:generalization} presents the cross-dataset generalization heatmap, constructed from results reported across five separate publications (two sharing one author). The matrix shows systematic failure patterns: models trained on concatenation-based datasets fail on neural editing data and vice versa, while mixed training partially alleviates this gap.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/fig3_generalization_heatmap.png}
+  \caption{Cross-dataset generalization results (EER\,\%, lower is better). All values are utterance-level EER unless otherwise indicated. \textbf{Architecture symbols:} $*$~XLSR-SLS~\cite{zhang2025partialedit}, $\dagger$~CFPRF~\cite{wu2024cfprf}, $\ddagger$~MRM~\cite{luong2025llamapartialspoof}, $\S$~TDAM~\cite{li2025hqmpsd}. Gray cells indicate untested pairs. \textbf{Caution:} values are aggregated from five independent studies that use different architectures, hyperparameters, and training protocols; cells are therefore not directly comparable across rows or columns. Additional source:~\cite{luong2025metrics}.}
+  \label{fig:generalization}
+\end{figure}
+
+\textbf{PartialSpoof $\leftrightarrow$ PartialEdit.} Using XLSR-SLS, PartialSpoof-trained models achieve 2.55\% in-domain but degrade to 23.72\% on PartialEdit. The reverse yields 23.06\%~\cite{zhang2025partialedit}. Mixed training achieves 3.00\%, 0.64\%, and 2.61\% across all three test sets.
+
+\textbf{PartialSpoof $\rightarrow$ LlamaPartialSpoof.} A multi-resolution model (MRM) trained on PartialSpoof achieves 15.33\% utterance EER on LlamaPartialSpoof's ``All Partial'' partition, while models trained on HAD (57.18\%) and AV-Deepfake1M audio (51.63\%) perform near chance~\cite{luong2025llamapartialspoof}.
+
+\textbf{PartialSpoof $\rightarrow$ HQ-MPSD.} TDAM trained on PartialSpoof yields 51.38\% EER on HQ-MPSD (vs.\ single-digit in-domain EER), and Nes2Net yields 57.47\%, as reported in~\cite{li2025hqmpsd} (Table~3). These cross-dataset EER values near random chance are among the most severe degradations reported.
+
+\textbf{XLS-R as a recurring top-performing backbone.} XLS-R-based systems appear as the best-performing or among the best in five independent evaluations: XLSR-SLS achieves 13.84\% average EER across 14 datasets in Speech~DF~Arena~\cite{speechdfarena2025} (rank 1 among open-source systems), XLS-R ranks first among 20 SSL models in Spoof-SUPERB~\cite{ali2026spoofsuperb} (17.41\% mean EER vs.\ WavLM 20.56\%, HuBERT 22.71\%), XLSR-SLS serves as the primary baseline in PartialEdit~\cite{zhang2025partialedit}, CFPRF~\cite{wu2024cfprf} (XLS-R backbone) achieves the best reported results on HAD/LAV-DF/PartialSpoof, and LOCO~\cite{wu2025loco} (XLS-R backbone) achieves the best weakly supervised results on three datasets. To our knowledge, this pattern has not been explicitly documented across all five benchmarks aggregated here, though individual studies report XLS-R's competitive performance within their respective evaluations.
+
+The likely contributing factors are multilingual pre-training (436K hours, 128 languages) and SLS's learned layer weighting. Two caveats apply: (1)~per-dataset variance is high (0.23\% to 33.95\% EER in Speech~DF~Arena), cross-paradigm performance degrades to 23.72\% EER (PartialSpoof $\rightarrow$ PartialEdit), and XLSR-SLS has not been evaluated on HQ-MPSD or LlamaPartialSpoof; (2)~SAL~\cite{sal2026} reports that WavLM achieves comparable results (3.00\% vs.\ 3.32\% EER on PartialSpoof), suggesting the advantage may stem from large-scale SSL pre-training in general rather than XLS-R specifically.
+
+\textbf{Localization generalization.} CFPRF achieves 99.23\% mAP on HAD but only 55.22\% on PartialSpoof~\cite{wu2024cfprf}, suggesting that annotation methodology (semantic boundaries in HAD vs.\ random voice activity detection (VAD) boundaries in PartialSpoof) affects what models learn.
+
+Three sources of these consistent failures emerge: (1) \emph{construction methodology mismatch}, which is the most consistently observed correlate in the studies surveyed, with concatenation-trained models failing on neural editing and vice versa~\cite{zhang2025partialedit}; (2) \emph{TTS/VC system mismatch}, where even within one paradigm, an Audiobox-Speech-trained model tested on VoiceCraft-edited speech shows 22.35\% localization EER vs.\ 3.80\% in-domain for VoiceCraft~\cite{zhang2025partialedit}; and (3) \emph{codec artifact confounds}, where PartialEdit-trained models generalize to PartialEdit-Codec (0.41\% EER) but not the reverse (27.59\%), suggesting codec artifacts mask manipulation signatures~\cite{zhang2025partialedit}. These patterns are consistent with broader generalization failures documented in utterance-level deepfake detection~\cite{muller2022does}.
+
+Several high-priority cross-dataset pairs remain untested. HAD $\rightarrow$ PartialEdit and LlamaPartialSpoof $\rightarrow$ HQ-MPSD have not been evaluated in any published work identified by our search. Language mismatch (HAD uses Chinese, most other datasets use English) and access restrictions (ADD~2023-PF is challenge-only) contribute to sparse coverage.
+
+
+% ═══════════════════════════════════════════════════════
+% 7. EVALUATION METRICS AND PROTOCOLS
+% ═══════════════════════════════════════════════════════
+\section{Evaluation Metrics and Protocols}
+\label{sec:metrics}
+
+This section provides formal definitions for the eight metric paradigms used across the ten datasets surveyed, identifies three incompatible IoU formulations, and quantifies evaluation protocol fragmentation. These definitions are necessary because even when two research groups train the same architecture on the same data, differences in evaluation protocol can produce incomparable results.
+
+
+
+\subsubsection{Segment Equal Error Rate}
+\label{sec:seg_eer}
+
+Used by PartialSpoof at multiple resolutions. LlamaPartialSpoof and HQ-MPSD report only utterance-level EER (equivalent to segment EER at $r =$ utterance duration). At temporal resolution $r$ seconds, each utterance is divided into non-overlapping segments of duration~$r$. Each segment~$i$ receives ground truth label $y_i \in \{0,1\}$ (spoof if \emph{any} frame within is spoof) and prediction score $s_i$ (mean of frame scores). As Luong et al.~\cite{luong2025metrics} note, segment EER has three inherent limitations: (1)~it is threshold-dependent, reflecting only a single operating point, (2)~cross-dataset comparison is problematic because score distributions shift across domains, and (3)~it treats all frames equally regardless of temporal coherence. The EER is the operating point where:
+\begin{equation}
+\label{eq:far}
+\text{FAR}(\tau) = \frac{|\{i : y_i = 0 \wedge s_i \geq \tau\}|}{|\{i : y_i = 0\}|}
+\end{equation}
+\begin{equation}
+\label{eq:frr}
+\text{FRR}(\tau) = \frac{|\{i : y_i = 1 \wedge s_i < \tau\}|}{|\{i : y_i = 1\}|}
+\end{equation}
+\begin{equation}
+\label{eq:eer}
+\text{EER} = \text{FAR}(\tau^*) = \text{FRR}(\tau^*) \quad \text{where } \tau^* : \text{FAR}(\tau^*) = \text{FRR}(\tau^*)
+\end{equation}
+
+PartialSpoof evaluates at six resolutions $r \in \{0.02, 0.04, 0.08, 0.16, 0.32, 0.64\}$\,s, revealing a resolution-performance tradeoff: CFPRF achieves 7.61\% at 20\,ms but 4.80\% at 640\,ms, a 37\% relative improvement at coarser resolution~\cite{luong2025metrics}. The ground truth label for each segment is spoof if \emph{any} frame within it is labeled spoof, and the prediction score is the mean of frame-level scores within that segment. The threshold $\tau^*$ is found by interpolation between the two closest values where FAR crosses FRR. Open-source implementations are available~\cite{hieuthi_partialspoof_metrics}.
+
+\subsubsection{Range-based Equal Error Rate}
+
+Introduced by~\cite{zhang2023rangeeer} to address the resolution-dependency of segment EER. Instead of counting misclassified segments, it measures \emph{total duration} of misclassified regions:
+\begin{equation}
+\label{eq:rfar}
+\text{R-FAR}(\tau) = \frac{\sum \text{duration}(\text{FA ranges})}{\sum \text{duration}(\text{bonafide})}
+\end{equation}
+\begin{equation}
+\label{eq:rfrr}
+\text{R-FRR}(\tau) = \frac{\sum \text{duration}(\text{miss ranges})}{\sum \text{duration}(\text{spoof})}
+\end{equation}
+
+The computation proceeds as follows. At candidate threshold $\tau$, all frame-level scores are binarized into predicted labels. Contiguous ranges of misclassified frames are identified: false alarm ranges (bonafide predicted as spoof) and miss ranges (spoof predicted as bonafide). The total \emph{duration} of each error type is computed, and R-FAR and R-FRR are obtained as ratios over total bonafide and spoof duration respectively. An adapted binary search algorithm~\cite{zhang2023rangeeer} efficiently finds $\tau^*$ where R-FAR $=$ R-FRR, avoiding exhaustive threshold sweep. Zhang et al.~\cite{zhang2023rangeeer} formally prove that point-based EER is a special case of range-based EER when the temporal resolution approaches the frame duration. At coarse resolutions, a short misclassified region within a correctly-classified segment is invisible to point-based measurement but captured by range-based measurement.
+
+\subsubsection{Frame-level EER}
+
+Used exclusively by PartialEdit~\cite{zhang2025partialedit}. Each 20\,ms frame is treated as an independent sample for EER computation, distinct from segment-level EER, which aggregates scores over contiguous segments. This inflates effective sample counts and disproportionately weights longer segments.
+
+\subsubsection{Duration-based F1}
+
+Used by HAD~\cite{yi2021had} and ADD~2023 Track~2~\cite{yi2023add}. Unlike standard count-based F1, this metric computes precision, recall, and F1 over temporal overlap \emph{in seconds}:
+\begin{equation}
+\label{eq:dur_tp}
+\text{TP} = \sum \text{duration}(\text{det\_fake} \cap \text{ref\_fake})
+\end{equation}
+\begin{equation}
+\label{eq:dur_fp}
+\text{FP} = \sum \text{duration}(\text{det\_fake}) - \text{TP}
+\end{equation}
+\begin{equation}
+\label{eq:dur_fn}
+\text{FN} = \sum \text{duration}(\text{ref\_fake}) - \text{TP}
+\end{equation}
+\begin{equation}
+\label{eq:dur_f1}
+P = \frac{\text{TP}}{\text{TP} + \text{FP}}, \quad R = \frac{\text{TP}}{\text{TP} + \text{FN}}, \quad F_1 = \frac{2PR}{P + R}
+\end{equation}
+
+The step-by-step procedure is: (1)~map predicted and reference fake segments onto a common timeline, (2)~for each predicted-reference pair, compute the temporal intersection as $\max(0, \min(p_\text{end}, g_\text{end}) - \max(p_\text{start}, g_\text{start}))$, (3)~sum all intersections to obtain TP, (4)~compute FP and FN as residual durations, and (5)~compute P, R, and F1. Edge cases: if TP~$+$~FP~$= 0$ (no predictions), precision is undefined, and if TP~$+$~FN~$= 0$ (no reference fakes), recall is undefined.
+
+The ADD~2023 composite score weights localization over detection: $\text{Score} = 0.3 \times A_\text{sent} + 0.7 \times F_{1,\text{seg}}$, where $A_\text{sent}$ is utterance-level binary accuracy. The 70\% weight on segment F1 reflects the challenge's emphasis on localization~\cite{yi2023add}.
+
+\textbf{Notation issue in HAD.} The published equations in Yi et al.~\cite{yi2021had} (Equations~1 and~2) contain what appears to be a typographical error. As printed, Equation~1 states $P = \text{TP}/(\text{TP} + \text{FN})$ and Equation~2 states $R = \text{FN}/(\text{TP} + \text{FP})$. These contradict standard precision/recall definitions: the denominators appear swapped, and Equation~2 uses FN in the numerator instead of TP. Figure~3 in the same paper illustrates TP, FP, FN in a manner consistent with standard definitions. This inconsistency between equations and figure is assessed as a typographical error. Researchers implementing these metrics should follow the standard definitions of Equations~\eqref{eq:dur_tp} to~\eqref{eq:dur_f1} above, consistent with Figure~3 of~\cite{yi2021had}.
+
+\subsubsection{AP@IoU and AR@N}
+\label{sec:ap_iou}
+
+Used by LAV-DF~\cite{cai2022lavdf}, AV-Deepfake1M~\cite{cai2024avdeepfake1m}, and LENS-DF~\cite{liu2025lensdf} (adapted). These metrics originate from the temporal action localization community (ActivityNet~\cite{heilbron2015activitynet}, THUMOS~\cite{idrees2017thumos}) and evaluate predicted temporal segments against ground truth via:
+\begin{equation}
+\label{eq:iou}
+\text{IoU}(P, G) = \frac{|P \cap G|}{|P \cup G|}
+\end{equation}
+where $|{\cdot}|$ denotes temporal duration in seconds.
+
+The AP@IoU procedure is: (1)~rank all predicted segments across the evaluation set by confidence (descending), (2)~at IoU threshold $\theta$, walk down the ranked list: for each prediction, compute IoU with all unmatched ground truth segments. If max IoU~$\geq \theta$, mark as TP and remove the matched GT from the candidate pool (one-to-one matching), otherwise mark as FP. (3)~At each rank position $k$, compute $P(k) = \text{TP}(k)/k$ and $R(k) = \text{TP}(k)/N_\text{GT}$. (4)~AP is the area under the interpolated precision-recall curve. The mAP averages AP across multiple thresholds: LAV-DF uses $\theta \in \{0.5, 0.55, \ldots, 0.95\}$ while AV-Deepfake1M uses $\theta \in \{0.1, 0.2, \ldots, 0.9\}$~\cite{cai2024avdeepfake1m}.
+
+AR@$N$ complements AP by evaluating recall when limited to $N$ proposals per utterance. For each $\theta \in \{0.5, 0.55, \ldots, 0.95\}$, recall is computed with at most $N$ predictions, and AR@$N$ averages across thresholds. Common values are $N \in \{5, 10, 20, 30, 50\}$, and the AV-Deepfake1M challenge score is $S = (\text{AP} + \text{AR})/2$~\cite{cai2024avdeepfake1m}.
+
+\subsubsection{Asymmetric 1D-IoU}
+
+Used exclusively by Psynd~\cite{zhang2022localizing}. Computed at the frame level (5.75\,ms hop, the finest resolution among all ten datasets) with a $2\times$ penalty on incorrect predictions:
+\begin{equation}
+\label{eq:asym_iou}
+\text{1D-IoU} = \frac{N_\text{correct}}{N_\text{correct} + 2 \times N_\text{incorrect}}
+\end{equation}
+
+For a prediction with 90\% frame accuracy: standard IoU $= 0.90/1.00 = 0.90$, but asymmetric 1D-IoU $= 0.90/(0.90 + 0.20) = 0.82$. This penalty disproportionately affects predictions with scattered errors, making high scores particularly difficult on utterances with multiple short fake segments.
+
+\subsubsection{Boundary F1}
+
+Used by PartialSpoof~\cite{zhang2023partialspoof}. For each predicted boundary, if a ground-truth boundary exists within tolerance $\delta$ (typically 20\,ms), the prediction is a true positive; otherwise it is a false positive. Unmatched ground-truth boundaries are false negatives. Precision, recall, and F1 are computed over these counts:
+\begin{equation}
+\label{eq:boundary_f1}
+\text{Boundary-}F_1 = \frac{2 \times P_b \times R_b}{P_b + R_b}
+\end{equation}
+where $P_b = \text{TP}_b / (\text{TP}_b + \text{FP}_b)$ and $R_b = \text{TP}_b / (\text{TP}_b + \text{FN}_b)$. Unlike segment or frame-level metrics, boundary F1 evaluates only transition-point accuracy, ignoring the duration of fake segments entirely.
+
+\subsubsection{Half Total Error Rate (HTER)}
+
+Used by LENS-DF~\cite{liu2025lensdf} alongside discrete fixed-window AP@IoU. HTER is the arithmetic mean of false acceptance rate and false rejection rate at a fixed decision threshold:
+\begin{equation}
+\label{eq:hter}
+\text{HTER} = \frac{\text{FAR}(\tau_\text{dev}) + \text{FRR}(\tau_\text{dev})}{2}
+\end{equation}
+where $\tau_\text{dev}$ is selected on a development set (typically the EER threshold). Unlike EER, which optimizes the threshold on the evaluation set, HTER measures generalization by applying a pre-selected threshold to unseen data.
+
+Temporal resolution directly determines task difficulty and cross-dataset comparability. Table~\ref{tab:resolution} summarizes the resolution spectrum.
+
+\begin{table}[t]
+\centering
+\caption{Temporal resolution comparison across datasets. Sub-phoneme resolution ($<$20\,ms) is only achieved by Psynd. All entries verified from primary sources.}
+\label{tab:resolution}
+\small
+\begin{tabular}{lll}
+\toprule
+\textbf{Resolution} & \textbf{Datasets} & \textbf{Level} \\
+\midrule
+5.75\,ms & Psynd & Sub-phoneme \\
+20\,ms & PS, LPS, PE & Phoneme \\
+30\,ms & HQ-MPSD & Phoneme \\
+40\,ms & LAV-DF, LENS-DF & Supra-phoneme \\
+Variable & AV-1M & Variable \\
+Word-level & HAD, ADD 2023 & Semantic \\
+\bottomrule
+\multicolumn{3}{l}{\footnotesize PS = PartialSpoof, LPS = LlamaPartialSpoof,} \\
+\multicolumn{3}{l}{\footnotesize PE = PartialEdit, AV-1M = AV-Deepfake1M.}
+\end{tabular}
+\end{table}
+
+A model evaluated at 40\,ms (LAV-DF) faces a qualitatively different task than one evaluated at 5.75\,ms (Psynd): the latter must resolve sub-phoneme artifacts while the former operates at supra-phoneme granularity. CFPRF's 37\% relative EER improvement from 20\,ms to 640\,ms on PartialSpoof~\cite{luong2025metrics} demonstrates that resolution choice alone can mask or inflate performance differences.
+
+Annotation methodology further determines what models learn. Semantic manipulation datasets (HAD, LlamaPartialSpoof, HQ-MPSD) create word-aligned boundaries where prosodic discontinuities signal manipulation, making duration-based F1 a natural fit; random-VAD substitution (PartialSpoof) produces boundaries at arbitrary speech positions, and multi-resolution segment EER captures artifacts at varying granularity. Content-driven manipulation (LAV-DF, AV-Deepfake1M) operates at the audio-visual level where TAL-borrowed AP@IoU metrics are appropriate. This alignment between construction methodology and evaluation metric means that cross-dataset metric conversion carries implicit assumptions about artifact type.
+
+Perhaps the clearest example of fragmentation involves IoU, a metric that appears across three datasets under the same name but with incompatible definitions. Running the same predictions through all three formulations produces different numerical results (Table~\ref{tab:iou_compare}).
+
+\begin{table}[t]
+\centering
+\caption{Three mutually incompatible IoU formulations. All properties verified from primary sources.}
+\label{tab:iou_compare}
+\small
+\begin{tabular}{p{1.7cm}p{1.8cm}p{1.8cm}p{1.8cm}}
+\toprule
+\textbf{Property} & \textbf{Continuous} & \textbf{Asym.\ 1D} & \textbf{Discrete} \\
+ & (LAV-DF, AV-1M) & (Psynd) & (LENS-DF) \\
+\midrule
+Unit & Seconds & Frames & Windows \\
+Matching & One-to-one & Global & Aggregated \\
+Penalty & Symmetric & 2$\times$ errors & Symmetric \\
+Resolution & Continuous & 5.75\,ms & 40\,ms \\
+Threshold & Implicit & Explicit & Explicit \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\emph{Continuous segment IoU} (LAV-DF~\cite{cai2022lavdf}, AV-Deepfake1M~\cite{cai2024avdeepfake1m}): computes IoU over variable-length predicted and ground truth segment boundaries in seconds, with one-to-one matching.
+
+\emph{Asymmetric 1D-IoU} (Psynd~\cite{zhang2022localizing}): frame-level Jaccard with $2\times$ penalty at 5.75\,ms resolution, with global comparison (no segment matching).
+
+\emph{Discrete fixed-window IoU} (LENS-DF~\cite{liu2025lensdf}): IoU from binarized fixed-window scores at 40\,ms resolution. As noted in~\cite{liu2025lensdf}, ``the audio-visual deepfake detectors\ldots predict variable-length segments in time, whereas the audio deepfake models in this study work on fixed-length windows. This mismatch affects not just what the model outputs but also how one matches predictions to ground truth.''
+
+
+
+\input{section_metrics_fragmentation}
+
+
+% ═══════════════════════════════════════════════════════
+% 8. OPEN CHALLENGES
+% ═══════════════════════════════════════════════════════
+\section{Open Challenges and Future Directions}
+\label{sec:challenges}
+
+The preceding sections have shown that datasets are growing more realistic and architectures are becoming more granular, but generalization remains poor and evaluation protocols are fragmented. This section identifies the problems the community should tackle next, organized by research maturity (Fig.~\ref{fig:challenges}).
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig5_challenge_roadmap.png}
+  \caption{Open challenges organized by research maturity. Active areas (5+ papers): cross-dataset generalization, boundary-aware detection, SSL front-end selection. Emerging (2 to 4 papers): neural speech editing, metric standardization, weakly-supervised methods. Open gaps (0 to 1 papers): spoof diarization, real-world robustness, forensic explainability.}
+  \label{fig:challenges}
+\end{figure*}
+
+\textbf{Cross-dataset generalization.} Current detectors fail across construction methodologies (Section~\ref{sec:generalization}). Mixed training~\cite{zhang2025partialedit} and augmentation strategies (e.g., SAL's Cross-Segment Mixing~\cite{sal2026}) provide partial solutions. Domain adaptation approaches such as SLIM~\cite{slim2024}, which exploits style-linguistics mismatch, and information-theoretic methods~\cite{finfoed2025} show promise for generalization in utterance-level detection, but their extension to temporal localization remains unexplored. Parameter-efficient approaches including wavelet prompt tuning~\cite{xie2025waveletprompt} and WaveSP-Net~\cite{wavespnet2025} reduce computational requirements while maintaining competitive performance.
+
+\textbf{SSL front-end selection.} The choice of SSL model and layer selection strategy affects performance, but no controlled comparison exists. Standardized ablations comparing XLS-R, WavLM, and HuBERT under matched conditions are needed.
+
+\textbf{Temporal resolution standardization.} The resolution spectrum spans 5.75\,ms (Psynd) to word-level (HAD), creating incomparable evaluation conditions (Section~\ref{sec:metrics}). Standardized ablations reporting at multiple resolutions are needed to disentangle model improvements from resolution effects.
+
+\textbf{Neural speech editing detection.} VoiceCraft~\cite{peng2024voicecraft}, SSR-Speech~\cite{wang2025ssrspeech}, and Audiobox~\cite{vyas2023audiobox} produce edits perceptually close to genuine speech (MOS 3.80 to 3.90 vs.\ 3.88 for genuine VCTK)~\cite{zhang2025partialedit,kassmann2024speechediting}. Detectors must move beyond stitching artifact detection. Codec-based synthesis~\cite{defossez2023encodec,zeghidour2022soundstream,codecfake2024,xie2025codecfake_dataset} introduces additional confounds, as demonstrated by the PartialEdit-Codec distinction~\cite{zhang2025partialedit}. Beyond current neural editors, foundation model-based systems pose emerging threats that existing partial deepfake detectors have not been evaluated against. Zero-shot TTS systems such as VALL-E~\cite{wang2023valle} and its successors can synthesize speech from a short prompt, while codec-based zero-shot TTS systems (e.g., NaturalSpeech~3~\cite{ju2024naturalspeech3}) and ASR-guided editing pipelines enable seamless word-level modifications without the stitching artifacts that current detectors rely on. As these systems become publicly available, the gap between generation quality and detection capability is likely to widen further.
+
+\textbf{Human detection baselines.} None of the ten surveyed datasets reports human detection accuracy as a baseline for temporal localization. The MOS scores reported by PartialEdit (3.80--3.90 for edited speech vs.\ 3.88 for genuine VCTK~\cite{zhang2025partialedit}) provide indirect evidence that neural edits approach human indistinguishability, but MOS measures perceived quality rather than detectability. Establishing human performance benchmarks would provide an upper bound for automated systems and help calibrate the practical significance of EER improvements.
+
+\textbf{Evaluation standardization.} The fragmentation documented in Section~\ref{sec:metrics} prevents cross-study comparison. An AudioCOCO-style toolkit standardizing temporal resolution, IoU formulation, and scoring protocol would address this.
+
+\textbf{Weakly supervised localization.} LOCO~\cite{wu2025loco} demonstrates feasibility but large gaps remain versus fully supervised methods, particularly at high IoU thresholds. Curriculum pseudo-labeling~\cite{zhang2025cpl} and multimodal multitask learning~\cite{xu2025wmmt} represent recent directions. Joint audio-visual approaches~\cite{zhou2021joint,cheng2024avforgery} may provide complementary signals for localization, though audio-only deployment remains the practical target for most forensic applications~\cite{ji2024speechforensics}.
+
+\textbf{Spoof diarization.} Current systems provide binary labels but cannot identify \emph{which} technique was used per segment nor distinguish multiple manipulations within one utterance.
+
+\textbf{Real-world robustness and deployment cost.} Among the ten datasets surveyed in this review (Table~\ref{tab:datasets}), none includes telephone channel effects, background noise, or lossy codec compression at scale (Table~\ref{tab:dataset_access}, Channel columns). Traditional signal-processing forensic methods such as electrical network frequency (ENF)-based detection~\cite{zhao2024atd,wang2022enfdeep} offer complementary capabilities but are limited to recordings made in electrical-activity environments.
+
+
+Deployment performance is effectively unknown. Computational cost presents a significant barrier: the SSL front-ends that dominate top-performing systems---XLS-R with 300 million parameters~\cite{babu2022xlsr} and WavLM-Large with approximately 316 million parameters~\cite{chen2022wavlm}---require GPU inference, and two-stage systems like CFPRF add proposal refinement overhead. By contrast, lightweight alternatives such as the AASIST-L variant (85,306 parameters, 332\,kB)---distinct from the full AASIST model (297K parameters) that achieves 0.83\% EER in Table~\ref{tab:architectures}---can run on CPU but generally underperform SSL-based systems on cross-dataset evaluation. Among the architectures reviewed in this survey (Table~\ref{tab:architectures}), none reports inference latency or throughput, as shown in Table~\ref{tab:cost_audit}. This gap makes it impossible to assess suitability for real-time or resource-constrained applications.
+
+\begin{table}[t]
+\centering
+\caption{Computational cost reporting audit of the architectures in Table~\ref{tab:architectures}. Params: parameter count reported (\cmark) or derivable from stated front-end (\textasciitilde). Latency: inference time or real-time factor. FLOPs: floating-point operations or MACs.}
+\label{tab:cost_audit}
+\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{System} & \textbf{Params} & \textbf{Latency} & \textbf{FLOPs} \\
+\midrule
+AASIST~\cite{jung2022aasist}             & \cmark  & \xmark & \xmark \\
+XLSR-SLS~\cite{zhang2024xlrsls}          & \textasciitilde & \xmark & \xmark \\
+Nes2Net~\cite{liu2025nes2net}            & \xmark  & \xmark & \xmark \\
+MRM~\cite{zhang2023partialspoof}         & \xmark  & \xmark & \xmark \\
+BAM~\cite{zhong2024bam}                  & \textasciitilde & \xmark & \xmark \\
+IFBDN~\cite{cai2024ifbdn}               & \xmark  & \xmark & \xmark \\
+BFC-Net~\cite{zhou2025bfcnet}            & \xmark  & \xmark & \xmark \\
+SAL~\cite{sal2026}                       & \xmark  & \xmark & \xmark \\
+TDAM~\cite{li2025tdam}                   & \xmark  & \xmark & \xmark \\
+CFPRF~\cite{wu2024cfprf}                 & \xmark  & \xmark & \xmark \\
+LOCO~\cite{wu2025loco}                   & \textasciitilde & \xmark & \xmark \\
+UMMAFormer~\cite{zhang2023ummaformer}    & \xmark  & \xmark & \xmark \\
+BA-TFD+~\cite{cai2023lavdf_cviu}        & \xmark  & \xmark & \xmark \\
+\bottomrule
+\multicolumn{4}{l}{\footnotesize \cmark\ = explicitly reported; \textasciitilde\ = derivable from named front-end;} \\
+\multicolumn{4}{l}{\footnotesize \xmark\ = not reported in the primary source paper.}
+\end{tabular}
+\end{table}
+
+Future work should report computational cost alongside detection performance, particularly given the more-than-three-orders-of-magnitude parameter gap between lightweight and SSL-based architectures.
+
+\textbf{Forensic explainability.} Legal admissibility requires interpretable explanations. Current SSL-based systems operate as black boxes, creating a barrier between detection capability and deployment requirements. Content-privacy-aware approaches such as SafeEar~\cite{li2024safeear} demonstrate that detection can be decoupled from content access, but explainability of temporal localization decisions remains unexplored. The gap between what current systems can detect and what courts can accept as evidence limits real-world deployment.
+
+\textbf{Ethical considerations.} Partial deepfake detection research raises dual-use concerns: the same detailed analysis of construction methods and detection blind spots that helps defenders also provides a roadmap for adversaries. Dataset construction itself involves generating manipulated speech using real speakers' voices, yet none of the three foundational partial deepfake datasets (PartialSpoof~\cite{zhang2023partialspoof}, HAD~\cite{yi2021had}, LlamaPartialSpoof~\cite{luong2025llamapartialspoof}) includes an ethics statement or discussion of speaker consent in the published paper, despite deriving from corpora (VCTK, AISHELL-3, LibriTTS) whose original consent terms did not anticipate deepfake generation. Researchers releasing new datasets should consider speaker consent protocols and access controls.
+
+Demographic bias is a growing concern. Yadav et al.~\cite{yadav2024fairssd} demonstrated that synthetic speech detectors exhibit systematic bias across demographics: higher false-positive rates for male speakers, adolescents, elderly speakers, and speakers with certain accents, tested across more than 900,000 speech signals and six detection systems. Whether partial deepfake detection systems inherit or amplify these biases remains unstudied.
+
+Detection systems deployed in practice must balance false positive rates against the consequences of wrongful accusation. A systematic review of deepfakes in the criminal justice system~\cite{sandoval2024deepfakes} documents the ``liar's dividend''---the phenomenon where genuine evidence is contested by claiming deepfake provenance---as an active litigation strategy. Regulation is also advancing: Article~50 of the EU AI Act~\cite{euaiact2024} requires that synthetic audio outputs be marked in a machine-readable format and that deployers of deepfake-generating systems disclose artificial generation, with general-purpose AI transparency obligations applicable from August~2025 and the full set of Article~50 obligations applicable from August~2026.\footnote{Regulation (EU) 2024/1689, Art.~113. Exact applicability dates and scope for specific use cases depend on the risk classification of the system and forthcoming guidelines from the European AI Office; readers should consult the official text and implementing acts for definitive compliance timelines.} These regulatory developments create both demand for and constraints on detection system design.
+
+
+\subsection{Limitations}
+
+This survey has several limitations. First, our search was conducted between January and March 2026; datasets or methods released after this window or indexed in non-English repositories may not be captured. Second, the cross-dataset generalization matrix (Fig.~\ref{fig:generalization}) aggregates results from studies using different architectures, hyperparameters, and training protocols; cells are not directly comparable across rows or columns. Third, we do not evaluate any system ourselves---all reported values are drawn from primary sources, inheriting any biases in those evaluations. Fourth, signal-level artifact characterization and formal connections to change-point detection theory are outside the scope of this empirical survey. The Jaccard overlap computation, metric set definitions, and the cross-dataset generalization data used to construct Fig.~\ref{fig:generalization} and Fig.~\ref{fig:metric_overlap} will be released upon acceptance to support reproducibility.
+
+% ═══════════════════════════════════════════════════════
+% 9. CONCLUSION
+% ═══════════════════════════════════════════════════════
+\section{Conclusion}
+\label{sec:conclusion}
+
+This survey has provided a dedicated analysis of partial deepfake speech detection and temporal localization by comparing ten datasets, organizing over fifteen detection architectures, formally defining eight evaluation metric paradigms, and aggregating cross-dataset generalization evidence from primary sources.
+
+The central finding is that construction methodology appears to act as a major confound in generalization. Detectors trained on concatenation-based data fail on neural editing and vice versa, with bidirectional EER degradation from single-digit in-domain to above 23\% cross-paradigm, and some evaluations approaching random chance. A detector performing well on today's benchmarks may therefore be ineffective against tomorrow's attacks unless trained on diverse construction methods. At the same time, XLS-R-based systems achieve the lowest average EER across five independent benchmarks (Speech~DF~Arena, PartialEdit, Spoof-SUPERB, CFPRF, LOCO), a pattern not previously aggregated across all five benchmarks. However, this observation carries important caveats: XLSR-SLS has not been evaluated on HQ-MPSD or LlamaPartialSpoof, cross-paradigm EER still degrades to 23.72\%, and SAL reports that WavLM achieves comparable results on PartialSpoof. The pattern may therefore reflect benefits of large-scale SSL pre-training rather than XLS-R specifically, a hypothesis that controlled ablations could test. Evaluation protocol fragmentation compounds these challenges: eight distinct metric paradigms, three incompatible IoU formulations, and temporal resolutions spanning 5.75\,ms to word-level prevent meaningful cross-study comparison. Quantitatively, 80\% of dataset pairs share zero common metrics (mean Jaccard index 0.11), effectively siloing research efforts.
+
+We recommend that the community adopt a minimum reporting standard of utterance-level EER plus at least one sub-utterance localization metric. A standardized evaluation toolkit covering all eight metric paradigms would replace the current patchwork of dataset-specific implementations, and cross-dataset evaluation should become standard practice, with every new dataset paper including baselines trained on at least two existing benchmarks. The shift from fully synthetic to partially edited deepfakes requires detection systems to move beyond exploiting stitching artifacts toward identifying distributional signatures of neural generation. We hope this survey supports that transition by consolidating scattered evaluation practices and making cross-study comparison possible.
+
+
+% ═══════════════════════════════════════════════════════
+% REFERENCES
+% ═══════════════════════════════════════════════════════
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

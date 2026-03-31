@@ -1,7 +1,8 @@
 """BAM detector wrapper.
 
-Reference: Zhong, Li, Yi. "Enhancing Partially Spoofed Audio Localization with
-Boundary-aware Attention Mechanism." Interspeech 2024. arXiv:2407.21611
+Reference: Zhong, J., Li, B., & Yi, J. (2024). "Enhancing Partially Spoofed
+Audio Localization with Boundary-aware Attention Mechanism." In Interspeech
+2024, pp. 4838-4842. doi:10.21437/Interspeech.2024-587
 
 Wraps the official BAM implementation from:
 https://github.com/media-sec-lab/BAM
@@ -120,9 +121,25 @@ class BAMDetector(BaseDetector):
                 raise FileNotFoundError(
                     f"BAM checkpoint not found: {ckpt_path}"
                 )
-            state = torch.load(
-                str(ckpt_path), map_location=self.device, weights_only=False
-            )
+            # Lightning checkpoints may be nested zip archives
+            # (outer zip contains hparams.yaml + model.ckpt inner file).
+            # PyTorch 2.6+ rejects the outer zip; extract inner file first.
+            import zipfile
+            import io
+            try:
+                state = torch.load(
+                    str(ckpt_path), map_location=self.device, weights_only=False
+                )
+            except RuntimeError:
+                logger.info("Extracting inner checkpoint from Lightning zip archive")
+                with zipfile.ZipFile(str(ckpt_path), "r") as zf:
+                    inner_names = [n for n in zf.namelist() if n.endswith(".ckpt")]
+                    inner_name = inner_names[0] if inner_names else zf.namelist()[0]
+                    with zf.open(inner_name) as f:
+                        buf = io.BytesIO(f.read())
+                state = torch.load(
+                    buf, map_location=self.device, weights_only=False
+                )
             # Lightning .ckpt files store weights under 'state_dict' key
             # with keys prefixed by 'model.'
             if "state_dict" in state:
@@ -180,6 +197,21 @@ class BAMDetector(BaseDetector):
 
         with torch.no_grad():
             x = torch.from_numpy(waveform).float().unsqueeze(0).to(self.device)
+
+            # BAM pools SSL features in groups of pool_frame_num (8 for 160ms).
+            # If the SSL output length isn't divisible by 8, the model crashes.
+            # Probe the SSL layer to get exact feature count, then pad if needed.
+            pool_n = int(self.resolution / 0.02)  # 8
+            x_probe = F.pad(x, (0, 256), mode='constant', value=0)
+            ssl_out = self.model.ssl_layer(x_probe)["hidden_states"][-1]
+            n_frames = ssl_out.shape[1]
+            remainder = n_frames % pool_n
+            if remainder != 0:
+                # Pad waveform so SSL produces pool_n-aligned frames
+                pad_frames = pool_n - remainder
+                pad_samples = pad_frames * 320  # SSL stride = 320
+                x = F.pad(x, (0, pad_samples))
+
             output, _b_pred = self.model(x)
 
             # output shape: (1, n_segments, 2) — apply softmax for probs
