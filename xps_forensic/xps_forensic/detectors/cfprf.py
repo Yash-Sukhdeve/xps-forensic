@@ -114,7 +114,8 @@ class CFPRFDetector(BaseDetector):
                 f"CFPRF external directory not found: {self.external_dir}"
             )
 
-        cfprf_path = str(self.external_dir)
+        # Resolve to absolute path to avoid cwd-dependent import failures
+        cfprf_path = str(self.external_dir.resolve())
         if cfprf_path not in sys.path:
             sys.path.insert(0, cfprf_path)
 

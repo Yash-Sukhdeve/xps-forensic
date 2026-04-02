@@ -196,38 +196,75 @@ def run_e1(cfg=None):
         all_frame_scores: list[np.ndarray] = []
         all_frame_labels: list[np.ndarray] = []
 
+        # Batched inference: collect waveforms and process via predict_batch
+        # for better GPU utilization. Batch size tuned per detector.
+        BATCH_SIZE = 16  # waveforms per GPU batch
         t0 = time.time()
         n_errors = 0
+        batch_wavs, batch_ids, batch_labels, batch_frame_labels = [], [], [], []
+        n_total_processed = 0
+
+        def _flush_batch():
+            """Process accumulated batch through detector."""
+            nonlocal n_errors
+            if not batch_wavs:
+                return
+            try:
+                outputs = detector.predict_batch(
+                    batch_wavs, batch_ids,
+                    sample_rate=dataset.sample_rate,
+                )
+                for output, lbl, fl in zip(outputs, batch_labels, batch_frame_labels):
+                    if np.isnan(output.utterance_score) or np.any(np.isnan(output.frame_scores)):
+                        n_errors += 1
+                        continue
+                    all_utt_ids.append(output.utterance_id)
+                    all_utt_scores.append(output.utterance_score)
+                    all_utt_labels.append(lbl)
+                    all_frame_scores.append(output.frame_scores)
+                    all_frame_labels.append(fl)
+            except Exception as exc:
+                # Fallback: process individually
+                for wav, uid, lbl, fl in zip(batch_wavs, batch_ids, batch_labels, batch_frame_labels):
+                    try:
+                        output = detector.predict(wav, dataset.sample_rate, utterance_id=uid)
+                        if np.isnan(output.utterance_score) or np.any(np.isnan(output.frame_scores)):
+                            n_errors += 1
+                            continue
+                        all_utt_ids.append(uid)
+                        all_utt_scores.append(output.utterance_score)
+                        all_utt_labels.append(lbl)
+                        all_frame_scores.append(output.frame_scores)
+                        all_frame_labels.append(fl)
+                    except Exception:
+                        n_errors += 1
+
         for idx in range(n_utterances):
             try:
                 sample = dataset[idx]
-                output = detector.predict(
-                    sample.waveform, sample.sample_rate,
-                    utterance_id=sample.utterance_id,
-                )
-
-                # [FIX B2] Guard against NaN scores from detectors
-                if np.isnan(output.utterance_score) or np.any(np.isnan(output.frame_scores)):
-                    n_errors += 1
-                    if n_errors <= 5:
-                        logger.warning("  Sample %d: NaN in scores, skipping", idx)
-                    continue
-
-                all_utt_ids.append(sample.utterance_id)
-                all_utt_scores.append(output.utterance_score)
-                # Binary utterance label: 0=real, >=1 means contains spoof
-                all_utt_labels.append(min(sample.utterance_label, 1))
-                all_frame_scores.append(output.frame_scores)
-                all_frame_labels.append(sample.frame_labels)
+                batch_wavs.append(sample.waveform)
+                batch_ids.append(sample.utterance_id)
+                batch_labels.append(min(sample.utterance_label, 1))
+                batch_frame_labels.append(sample.frame_labels)
             except Exception as exc:
                 n_errors += 1
                 if n_errors <= 5:
-                    logger.warning("  Sample %d failed: %s", idx, exc)
+                    logger.warning("  Sample %d failed to load: %s", idx, exc)
+                continue
+
+            if len(batch_wavs) >= BATCH_SIZE:
+                _flush_batch()
+                batch_wavs, batch_ids, batch_labels, batch_frame_labels = [], [], [], []
+                n_total_processed = len(all_utt_scores)
 
             if (idx + 1) % 500 == 0:
                 elapsed = time.time() - t0
+                rate = n_total_processed / elapsed if elapsed > 0 else 0
                 print(f"  Processed {idx + 1}/{n_utterances} "
-                      f"({elapsed:.1f}s elapsed, {n_errors} errors)")
+                      f"({elapsed:.1f}s, {rate:.1f} utt/s, {n_errors} errors)")
+
+        # Flush remaining
+        _flush_batch()
 
         elapsed = time.time() - t0
         n_processed = len(all_utt_scores)
@@ -343,11 +380,13 @@ def run_e1(cfg=None):
             all_fl_for_eer.extend(fl[:min_len].tolist())
 
         if all_fs_at_label_grid and len(set(all_fl_for_eer)) > 1:
-            _, frame_thresh = compute_eer(
+            frame_eer, frame_thresh = compute_eer(
                 np.array(all_fs_at_label_grid), np.array(all_fl_for_eer)
             )
+            print(f"  Frame-level EER: {frame_eer:.4f}, threshold: {frame_thresh:.4f}")
         else:
-            frame_thresh = utt_thresh  # fallback — report as limitation
+            frame_thresh = utt_thresh
+            print(f"  Frame-level EER: N/A, using utt_thresh={frame_thresh:.4f}")
 
         all_preds_aligned: list[int] = []
         all_gts_aligned: list[int] = []
