@@ -32,6 +32,7 @@ from xps_forensic.utils.metrics import (
     compute_segment_f1,
     upsample_binary_predictions_to_label_grid,
     _pool_scores_to_windows,
+    _pool_labels_to_windows,
 )
 from xps_forensic.utils.stats import bootstrap_ci
 from xps_forensic.data.partialspoof import PartialSpoofDataset
@@ -324,8 +325,11 @@ def run_e1(cfg=None):
               f"(95% CI: {utt_eer_ci[0]:.4f}–{utt_eer_ci[1]:.4f})")
 
         # ── Segment-level EER at each resolution ─────────────────────
-        # [FIX A2/C1] Pool all segments across ALL utterances before
-        # computing EER. This matches Zhang et al. (2023) Section IV-B.
+        # [FIX A2/C1 + E1-1 + E1-2]
+        # Pool all segments across ALL utterances before computing EER.
+        # When target resolution < detector native, upsample scores first.
+        # Use "any" rule for labels (PartialSpoof protocol: spoof if ANY
+        # frame in window is spoof). Zhang et al. (2023) Section IV-B.
         for res in resolutions:
             pooled_scores: list[float] = []
             pooled_labels: list[int] = []
@@ -333,17 +337,29 @@ def run_e1(cfg=None):
             for fs, fl in zip(all_frame_scores, all_frame_labels):
                 if len(fl) == 0 or len(fs) == 0:
                     continue
-                # Pool scores at this resolution
-                s_win = _pool_scores_to_windows(
-                    fs, float(det_frame_shift_ms), float(res), agg="mean"
+
+                # [FIX E1-1] If target resolution is finer than detector
+                # native, upsample scores to label grid first, then pool.
+                if res < det_frame_shift_ms:
+                    # Upsample scores: repeat each score to fill label grid
+                    ratio = det_frame_shift_ms / LABEL_FRAME_SHIFT_MS
+                    fs_up = np.repeat(fs, max(1, int(round(ratio))))
+                    # Now both are at ~LABEL_FRAME_SHIFT_MS resolution
+                    s_win = _pool_scores_to_windows(
+                        fs_up, LABEL_FRAME_SHIFT_MS, float(res), agg="mean"
+                    )
+                else:
+                    s_win = _pool_scores_to_windows(
+                        fs, float(det_frame_shift_ms), float(res), agg="mean"
+                    )
+
+                # [FIX E1-2] Use "any" rule for labels (PartialSpoof protocol)
+                l_win = _pool_labels_to_windows(
+                    fl, LABEL_FRAME_SHIFT_MS, float(res), rule="any"
                 )
-                l_win = _pool_scores_to_windows(
-                    fl.astype(float), LABEL_FRAME_SHIFT_MS, float(res), agg="mean"
-                )
-                l_bin = (l_win >= 0.5).astype(int)
-                min_len = min(len(s_win), len(l_bin))
+                min_len = min(len(s_win), len(l_win))
                 pooled_scores.extend(s_win[:min_len].tolist())
-                pooled_labels.extend(l_bin[:min_len].tolist())
+                pooled_labels.extend(l_win[:min_len].tolist())
 
             if pooled_scores and len(set(pooled_labels)) > 1:
                 pooled_eer, seg_thresh = compute_eer(
