@@ -343,9 +343,13 @@ def upsample_binary_predictions_to_label_grid(
     pred_frame_shift_ms: float,
     label_frame_shift_ms: float,
 ) -> np.ndarray:
-    """Upsample binary predictions to the label frame grid by repetition.
+    """Upsample frame-level values to the label frame grid by repetition.
 
-    Example: 20 ms predictions to 10 ms labels → repeat each frame twice.
+    Accepts both continuous scores and binary predictions.  Values are
+    preserved as float so that continuous scores survive upsampling
+    (required when computing EER thresholds on upsampled score grids).
+
+    Example: 20 ms predictions to 10 ms labels -> repeat each frame twice.
     If the ratio is not an integer, uses nearest repeat count rounding.
     Truncates to align edges without padding.
     """
@@ -356,5 +360,5 @@ def upsample_binary_predictions_to_label_grid(
     if abs(ratio - r) > 1e-6:
         # Fallback: approximate by nearest integer repeat
         r = max(1, r)
-    up = np.repeat(pred_binary.astype(int), r)
+    up = np.repeat(np.asarray(pred_binary, dtype=float), r)
     return up
