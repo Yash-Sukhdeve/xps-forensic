@@ -119,6 +119,18 @@ class CFPRFDetector(BaseDetector):
         if cfprf_path not in sys.path:
             sys.path.insert(0, cfprf_path)
 
+        # Clear cached 'models' package from other detectors (e.g., BAM)
+        # that share the generic 'models' namespace. Without this, Python
+        # finds BAM's models/ instead of CFPRF's models/.
+        if "models" in sys.modules:
+            cached = sys.modules["models"]
+            cached_path = getattr(cached, "__path__", [None])[0] if hasattr(cached, "__path__") else None
+            cfprf_models = str(Path(cfprf_path) / "models")
+            if cached_path and str(cached_path) != cfprf_models:
+                stale = [k for k in list(sys.modules) if k == "models" or k.startswith("models.")]
+                for k in stale:
+                    del sys.modules[k]
+
         from models.FDN import CFPRF_FDN  # noqa: E402
 
         # The ASRModel class in FDN.py loads XLSR from a hardcoded
