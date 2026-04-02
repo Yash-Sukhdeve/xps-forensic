@@ -141,7 +141,7 @@ class CFPRFDetector(BaseDetector):
                     f"CFPRF checkpoint not found: {ckpt_path}"
                 )
             state = torch.load(
-                str(ckpt_path), map_location=self.device, weights_only=True
+                str(ckpt_path), map_location=self.device, weights_only=False
             )
             # Handle both plain state dict and wrapped formats
             if "state_dict" in state:

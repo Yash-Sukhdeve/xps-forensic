@@ -29,9 +29,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from xps_forensic.utils.config import load_config
 from xps_forensic.utils.metrics import (
     compute_eer,
-    compute_segment_eer_mixed,
     compute_segment_f1,
     upsample_binary_predictions_to_label_grid,
+    _pool_scores_to_windows,
 )
 from xps_forensic.utils.stats import bootstrap_ci
 from xps_forensic.data.partialspoof import PartialSpoofDataset
@@ -197,26 +197,45 @@ def run_e1(cfg=None):
         all_frame_labels: list[np.ndarray] = []
 
         t0 = time.time()
-        for idx, sample in enumerate(dataset):
-            output = detector.predict(
-                sample.waveform, sample.sample_rate,
-                utterance_id=sample.utterance_id,
-            )
+        n_errors = 0
+        for idx in range(n_utterances):
+            try:
+                sample = dataset[idx]
+                output = detector.predict(
+                    sample.waveform, sample.sample_rate,
+                    utterance_id=sample.utterance_id,
+                )
 
-            all_utt_ids.append(sample.utterance_id)
-            all_utt_scores.append(output.utterance_score)
-            # Binary utterance label: 0=real, >=1 means contains spoof
-            all_utt_labels.append(min(sample.utterance_label, 1))
-            all_frame_scores.append(output.frame_scores)
-            all_frame_labels.append(sample.frame_labels)
+                # [FIX B2] Guard against NaN scores from detectors
+                if np.isnan(output.utterance_score) or np.any(np.isnan(output.frame_scores)):
+                    n_errors += 1
+                    if n_errors <= 5:
+                        logger.warning("  Sample %d: NaN in scores, skipping", idx)
+                    continue
+
+                all_utt_ids.append(sample.utterance_id)
+                all_utt_scores.append(output.utterance_score)
+                # Binary utterance label: 0=real, >=1 means contains spoof
+                all_utt_labels.append(min(sample.utterance_label, 1))
+                all_frame_scores.append(output.frame_scores)
+                all_frame_labels.append(sample.frame_labels)
+            except Exception as exc:
+                n_errors += 1
+                if n_errors <= 5:
+                    logger.warning("  Sample %d failed: %s", idx, exc)
 
             if (idx + 1) % 500 == 0:
                 elapsed = time.time() - t0
                 print(f"  Processed {idx + 1}/{n_utterances} "
-                      f"({elapsed:.1f}s elapsed)")
+                      f"({elapsed:.1f}s elapsed, {n_errors} errors)")
 
         elapsed = time.time() - t0
-        print(f"  Inference complete: {n_utterances} utterances in {elapsed:.1f}s")
+        n_processed = len(all_utt_scores)
+        print(f"  Inference complete: {n_processed}/{n_utterances} utterances "
+              f"in {elapsed:.1f}s ({n_errors} errors)")
+        if n_errors > 0:
+            logger.warning("  %d/%d utterances failed (%.1f%%)",
+                           n_errors, n_utterances, 100 * n_errors / n_utterances)
 
         utt_scores = np.array(all_utt_scores)
         utt_labels = np.array(all_utt_labels)
@@ -259,6 +278,7 @@ def run_e1(cfg=None):
         det_results: dict = {
             "frame_shift_ms": det_frame_shift_ms,
             "n_utterances": n_utterances,
+            "n_processed": n_processed,
             "utt_eer": float(utt_eer),
             "utt_eer_threshold": float(utt_thresh),
             "utt_eer_ci": utt_eer_ci,
@@ -267,43 +287,74 @@ def run_e1(cfg=None):
               f"(95% CI: {utt_eer_ci[0]:.4f}–{utt_eer_ci[1]:.4f})")
 
         # ── Segment-level EER at each resolution ─────────────────────
-        # Uses compute_segment_eer_mixed which handles different frame shifts
-        # for scores (det_frame_shift_ms) and labels (10 ms).
+        # [FIX A2/C1] Pool all segments across ALL utterances before
+        # computing EER. This matches Zhang et al. (2023) Section IV-B.
         for res in resolutions:
-            seg_eers: list[float] = []
-            for fs, fl in zip(all_frame_scores, all_frame_labels):
-                if len(fl) == 0 or not fl.any():
-                    continue
-                if len(fs) == 0:
-                    continue
-                eer_val, _ = compute_segment_eer_mixed(
-                    frame_scores=fs,
-                    score_frame_shift_ms=float(det_frame_shift_ms),
-                    frame_labels=fl,
-                    label_frame_shift_ms=LABEL_FRAME_SHIFT_MS,
-                    resolution_ms=float(res),
-                )
-                seg_eers.append(eer_val)
+            pooled_scores: list[float] = []
+            pooled_labels: list[int] = []
 
-            if seg_eers:
-                mean_seg_eer = float(np.mean(seg_eers))
-                seg_ci = bootstrap_ci(np.array(seg_eers), n_bootstrap=1000)
-                det_results[f"seg_eer_{res}ms"] = mean_seg_eer
+            for fs, fl in zip(all_frame_scores, all_frame_labels):
+                if len(fl) == 0 or len(fs) == 0:
+                    continue
+                # Pool scores at this resolution
+                s_win = _pool_scores_to_windows(
+                    fs, float(det_frame_shift_ms), float(res), agg="mean"
+                )
+                l_win = _pool_scores_to_windows(
+                    fl.astype(float), LABEL_FRAME_SHIFT_MS, float(res), agg="mean"
+                )
+                l_bin = (l_win >= 0.5).astype(int)
+                min_len = min(len(s_win), len(l_bin))
+                pooled_scores.extend(s_win[:min_len].tolist())
+                pooled_labels.extend(l_bin[:min_len].tolist())
+
+            if pooled_scores and len(set(pooled_labels)) > 1:
+                pooled_eer, seg_thresh = compute_eer(
+                    np.array(pooled_scores), np.array(pooled_labels)
+                )
+                # Bootstrap CI: resample pooled segments
+                pooled_arr = np.array(pooled_scores)
+                pooled_lab = np.array(pooled_labels)
+                errors = (pooled_arr > seg_thresh).astype(int) != pooled_lab
+                seg_ci = bootstrap_ci(errors.astype(float), n_bootstrap=1000)
+                det_results[f"seg_eer_{res}ms"] = float(pooled_eer)
                 det_results[f"seg_eer_{res}ms_ci"] = seg_ci
-                print(f"  Seg-EER@{res}ms: {mean_seg_eer:.4f} "
+                print(f"  Seg-EER@{res}ms: {pooled_eer:.4f} "
                       f"(95% CI: {seg_ci[0]:.4f}–{seg_ci[1]:.4f})")
             else:
-                print(f"  Seg-EER@{res}ms: N/A (no spoofed utterances)")
+                print(f"  Seg-EER@{res}ms: N/A (single class in pooled set)")
 
         # ── Segment F1 at detector's native resolution ───────────────
-        # Binarize frame scores using the utterance EER threshold, then
-        # upsample to the 10 ms label grid for fair comparison.
+        # [FIX C4+B] Compute frame-level EER threshold by upsampling
+        # scores to the 10ms label grid (correct alignment direction),
+        # then compute EER on the pooled set.
+        all_fs_at_label_grid = []
+        all_fl_for_eer = []
+        for fs, fl in zip(all_frame_scores, all_frame_labels):
+            if len(fs) == 0 or len(fl) == 0:
+                continue
+            # Upsample scores to label grid (e.g., repeat each 160ms score 16x to get 10ms)
+            fs_upsampled = upsample_binary_predictions_to_label_grid(
+                fs, pred_frame_shift_ms=float(det_frame_shift_ms),
+                label_frame_shift_ms=LABEL_FRAME_SHIFT_MS,
+            )
+            min_len = min(len(fs_upsampled), len(fl))
+            all_fs_at_label_grid.extend(fs_upsampled[:min_len].tolist())
+            all_fl_for_eer.extend(fl[:min_len].tolist())
+
+        if all_fs_at_label_grid and len(set(all_fl_for_eer)) > 1:
+            _, frame_thresh = compute_eer(
+                np.array(all_fs_at_label_grid), np.array(all_fl_for_eer)
+            )
+        else:
+            frame_thresh = utt_thresh  # fallback — report as limitation
+
         all_preds_aligned: list[int] = []
         all_gts_aligned: list[int] = []
         for fs, fl in zip(all_frame_scores, all_frame_labels):
             if len(fs) == 0 or len(fl) == 0:
                 continue
-            pred_binary = (fs > utt_thresh).astype(int)
+            pred_binary = (fs > frame_thresh).astype(int)
             pred_at_label_grid = upsample_binary_predictions_to_label_grid(
                 pred_binary,
                 pred_frame_shift_ms=float(det_frame_shift_ms),

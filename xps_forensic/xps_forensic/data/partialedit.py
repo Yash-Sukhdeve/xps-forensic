@@ -1,23 +1,24 @@
 """PartialEdit dataset loader.
 
-Expected directory layout:
-    root/
-    ├── audio/            # edited waveforms
-    ├── original/         # (optional) original waveforms
-    └── metadata.json     # list of entries with edit regions
+Supports two layouts:
 
-metadata.json schema (each entry):
-    {
-        "id": "PE_00001",
-        "filename": "PE_00001.wav",
-        "edit_regions": [
-            {"start_sec": 1.2, "end_sec": 2.5},
-            ...
-        ]
-    }
+1. **CSV layout** (actual PartialEdit distribution):
+    root/
+    ├── PartialEdit_E1E2.csv    # "rel_path,edit_start,edit_end,duration"
+    ├── E1/p225/*.wav           # edited waveforms (subset E1)
+    └── E2/p225/*.wav           # edited waveforms (subset E2)
+
+2. **JSON layout** (legacy/synthetic):
+    root/
+    ├── metadata.json           # [{"id", "filename", "edit_regions": [...]}]
+    └── audio/*.wav
+
+Reference: Zhang et al., "PartialEdit: A Dataset for Neural Speech Editing
+Evaluation", 2025.
 """
 from __future__ import annotations
 
+import csv
 import json
 import logging
 from pathlib import Path
@@ -34,27 +35,98 @@ FRAME_SHIFT_MS: int = 10
 
 
 class PartialEditDataset(BasePartialSpoofDataset):
-    """Loader for the PartialEdit corpus."""
+    """Loader for the PartialEdit corpus.
+
+    Auto-detects between CSV layout (PartialEdit_E1E2.csv) and
+    JSON layout (metadata.json).
+    """
 
     # ------------------------------------------------------------------
     # Manifest
     # ------------------------------------------------------------------
 
     def _load_manifest(self) -> list[dict]:
-        """Parse ``metadata.json`` and build manifest entries."""
-        meta_path = self.root / "metadata.json"
-        if not meta_path.exists():
-            logger.warning("metadata.json not found: %s", meta_path)
+        """Load manifest from CSV or JSON, whichever exists."""
+        csv_path = self.root / "PartialEdit_E1E2.csv"
+        json_path = self.root / "metadata.json"
+
+        if csv_path.exists():
+            return self._load_csv_manifest(csv_path)
+        elif json_path.exists():
+            return self._load_json_manifest(json_path)
+        else:
+            logger.warning(
+                "Neither PartialEdit_E1E2.csv nor metadata.json found in %s",
+                self.root,
+            )
             return []
 
-        with open(meta_path, "r") as fh:
+    def _load_csv_manifest(self, csv_path: Path) -> list[dict]:
+        """Parse PartialEdit_E1E2.csv.
+
+        Format: relative_path, edit_start_sec, edit_end_sec, duration_sec
+        Example: E1/p237/p237_321_edited_partial_16k.wav,1.038,1.46,3.24
+
+        Each row represents one edited utterance with a single edit region.
+        """
+        manifest: list[dict] = []
+        n_missing = 0
+
+        with open(csv_path, "r") as fh:
+            reader = csv.reader(fh)
+            for row in reader:
+                if len(row) < 4:
+                    continue
+
+                rel_path = row[0].strip()
+                edit_start = float(row[1])
+                edit_end = float(row[2])
+                duration = float(row[3])
+
+                wav_path = self.root / rel_path
+                if not wav_path.exists():
+                    n_missing += 1
+                    if n_missing <= 5:
+                        logger.warning("Missing: %s", wav_path)
+                    continue
+
+                # Derive utterance ID from filename
+                utt_id = Path(rel_path).stem
+
+                manifest.append(
+                    {
+                        "utterance_id": utt_id,
+                        "wav_path": str(wav_path),
+                        "edit_regions": [
+                            {"start_sec": edit_start, "end_sec": edit_end}
+                        ],
+                        "utterance_label_raw": 1,  # all entries are edited
+                    }
+                )
+
+        if n_missing > 0:
+            logger.warning(
+                "PartialEdit: %d/%d files missing on disk",
+                n_missing,
+                n_missing + len(manifest),
+            )
+
+        logger.info(
+            "PartialEdit [CSV]: loaded %d utterances from %s",
+            len(manifest),
+            csv_path.name,
+        )
+        return manifest
+
+    def _load_json_manifest(self, json_path: Path) -> list[dict]:
+        """Parse legacy metadata.json format."""
+        with open(json_path, "r") as fh:
             raw_entries = json.load(fh)
 
         manifest: list[dict] = []
         for entry in raw_entries:
             wav_path = self.root / "audio" / entry["filename"]
             edit_regions = entry.get("edit_regions", [])
-            # Eager utterance label: 0=real, 1=partial (has edits)
             utterance_label_raw = 1 if edit_regions else 0
             manifest.append(
                 {
@@ -64,6 +136,10 @@ class PartialEditDataset(BasePartialSpoofDataset):
                     "utterance_label_raw": utterance_label_raw,
                 }
             )
+
+        logger.info(
+            "PartialEdit [JSON]: loaded %d utterances", len(manifest)
+        )
         return manifest
 
     # ------------------------------------------------------------------

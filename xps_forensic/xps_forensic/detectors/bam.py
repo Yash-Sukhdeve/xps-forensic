@@ -216,8 +216,11 @@ class BAMDetector(BaseDetector):
 
             # output shape: (1, n_segments, 2) — apply softmax for probs
             probs = F.softmax(output, dim=-1)
-            # Class 1 = spoof probability
-            frame_scores = probs[0, :, 1].cpu().numpy()
+            # BAM label convention: class 0 = spoof, class 1 = bonafide
+            # (PartialSpoof raw labels: '0' = spoof, '1' = bonafide,
+            #  used directly as CrossEntropyLoss targets by BAM)
+            # XPS convention: higher score = more likely fake
+            frame_scores = probs[0, :, 0].cpu().numpy()
 
         utterance_score = (
             float(np.max(frame_scores)) if len(frame_scores) > 0 else 0.0
